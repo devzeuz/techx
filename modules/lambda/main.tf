@@ -15,7 +15,7 @@ resource "aws_lambda_function" "ingestor" {
   environment {
     variables = {
       TABLE_NAME       = var.table_name
-      API_KEY_SSM_PATH = aws_ssm_parameter.youtube_api_key.name
+      API_KEY_SSM_PATH = var.ssm_name
     }
   }
 }
