@@ -1,15 +1,15 @@
-resource "archive_file" "zip_lambda"{
-    type = "zip"
-    source_file = "${path.module}/src/handler.py"
-    output_path = "${path.module}/src/handler.zip"
-}
+# resource "archive_file" "zip_lambda"{
+#     type = "zip"
+#     source_file = "${path.module}/src/handler.py"
+#     output_path = "${path.module}/src/handler.zip"
+# }
 
 resource "aws_lambda_function" "api_handler" {
   function_name = "api-read-handler"
   role          = aws_iam_role.api_role.arn
   handler       = "api_handler.lambda_handler"
   runtime       = "python3.11"
-  filename      =  archive_file.zip_lambda.output_path
+#   filename      =  archive_file.zip_lambda.output_path
 
   environment {
     variables = {
