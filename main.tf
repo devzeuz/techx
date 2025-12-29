@@ -19,3 +19,9 @@ module "lambda" {
   table_name = module.database.table_name 
   ssm_name = module.ssm.ssm_name
 }
+
+module "api" {
+  source = "./modules/api"
+  db_table_name = module.database.table_name
+  db_table_arn = module.database.table_arn
+}
