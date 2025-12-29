@@ -9,7 +9,7 @@ resource "aws_lambda_function" "api_handler" {
   role          = aws_iam_role.api_role.arn
   handler       = "api_handler.lambda_handler"
   runtime       = "python3.11"
-  filename      = "archive_file.zip-lambda.output_path"
+  filename      =  archive_file.zip-lambda.output_path
 
   environment {
     variables = {
