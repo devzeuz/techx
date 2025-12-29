@@ -1,4 +1,4 @@
-resource "archive_file" "zip_lambda"{
+data "archive_file" "zip_lambda"{
     type = "zip"
     source_file = "${path.module}/src/handler.py"
     output_path = "${path.module}/src/handler.zip"
