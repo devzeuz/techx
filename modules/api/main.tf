@@ -1,7 +1,7 @@
 resource "archive_file" "zip_lambda"{
     type = "zip"
     source_file = "${path.module}/src/handler.py"
-    output_path = "${path.module}/src/api_handler.zip"
+    output_path = "${path.module}/src/handler.zip"
 }
 
 resource "aws_lambda_function" "api_handler" {
