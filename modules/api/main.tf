@@ -1,22 +1,22 @@
-# data "archive_file" "zip_lambda"{
-#     type = "zip"
-#     source_file = "${path.module}/src/api_handler.py"
-#     output_path = "${path.module}/src/api_handler.zip"
-# }
+data "archive_file" "zip_lambda"{
+    type = "zip"
+    source_file = "${path.module}/src/api_handler.py"
+    output_path = "${path.module}/src/api_handler.zip"
+}
 
-# resource "aws_lambda_function" "api_handler" {
-#   function_name = "api-read-handler"
-#   role          = aws_iam_role.api_role.arn
-#   handler       = "api_handler.lambda_handler"
-#   runtime       = "python3.11"
-#   filename      =  data.archive_file.zip_lambda.output_path
+resource "aws_lambda_function" "api_handler" {
+  function_name = "api-read-handler"
+  role          = aws_iam_role.api_role.arn
+  handler       = "api_handler.lambda_handler"
+  runtime       = "python3.11"
+  filename      =  data.archive_file.zip_lambda.output_path
 
-#   environment {
-#     variables = {
-#       TABLE_NAME = var.db_table_name
-#     }
-#   }
-# }
+  environment {
+    variables = {
+      TABLE_NAME = var.db_table_name
+    }
+  }
+}
 
 resource "aws_apigatewayv2_api" "http_api" {
   name          = "tech-content-api"
