@@ -1,6 +1,6 @@
 resource "archive_file" "zip-lambda"{
     type = "zip"
-    source_file = "${path.root}/backend/api_handler.py"
+    source_file = "${path.module}/src/api_handler.py"
     output_path = "${path.module}/src/api_handler.zip"
 }
 
