@@ -9,7 +9,7 @@ resource "aws_lambda_function" "ingestor" {
   role             = var.lambda_role_arn
   handler          = "ingestor.lambda_handler"
   runtime          = "python3.11"
-  filename         = data.archive_file.zip-lambda.output_path
+  filename         = data.archive_file.zip_lambda.output_path
   timeout          = 30
 
   environment {
