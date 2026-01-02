@@ -1,6 +1,6 @@
 data "archive_file" "zip_lambda"{
     type = "zip"
-    source_file = "${path.module}/src/ingestor.py"
+    source_file = "${path.module}/ingestor.py"
     output_path = "${path.module}/src/ingestor.zip"
 }
 
