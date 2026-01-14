@@ -1,8 +1,8 @@
-data "archive_file" "zip_lambda"{
-    type = "zip"
-    source_file = "${path.module}/src/ingestor.py"
-    output_path = "${path.module}/src/ingestor.zip"
-}
+# data "archive_file" "zip_lambda"{
+#     type = "zip"
+#     source_file = "${path.module}/src/ingestor.py"
+#     output_path = "${path.module}/src/ingestor.zip"
+# }
 
 resource "aws_lambda_function" "ingestor" {
   function_name    = "content-ingestor"
