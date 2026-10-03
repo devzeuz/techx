@@ -1,27 +1,47 @@
+data "aws_caller_identity" "current" {}
+
 module "database" {
-  source     = "./module/dynamodb"
-}
-
-module "iam" {
-  source = "./module/iam"
-  table_arn = module.database.table_arn
-  ssm_arn = module.ssm.ssm_arn
-
+  source = "./module/dynamodb"
 }
 
 module "ssm" {
   source = "./module/ssm"
 }
 
-# module "lambda" {
-#   source = "./module/lambda"
-#   lambda_role_arn = module.iam.lambda_role_arn
-#   table_name = module.database.table_name 
-#   ssm_name = module.ssm.ssm_name
-# }
+module "iam" {
+  source           = "./module/iam"
+  table_arn        = module.database.table_arn
+  ssm_arn          = module.ssm.ssm_arn
+  gemini_ssm_arn   = module.ssm.gemini_ssm_arn
+  media_bucket_arn = module.s3_media.bucket_arn
+}
 
-# module "api" {
-#   source = "./module/api"
-#   db_table_name = module.database.table_name
-#   db_table_arn = module.database.table_arn
-# }
+module "s3_media" {
+  source                               = "./module/s3"
+  account_id                           = data.aws_caller_identity.current.account_id
+  frame_extractor_lambda_arn           = module.lambda.frame_extractor_arn
+  frame_extractor_invoke_permission_id = module.lambda.frame_extractor_permission_id
+}
+
+module "lambda" {
+  source                    = "./module/lambda"
+  lambda_role_arn           = module.iam.lambda_role_arn
+  pipeline_role_arn         = module.iam.pipeline_role_arn
+  pause_builder_role_arn    = module.iam.pause_builder_role_arn
+  gemini_describer_role_arn = module.iam.gemini_describer_role_arn
+  table_name                = module.database.table_name
+  ssm_name                  = module.ssm.ssm_name
+  gemini_ssm_name           = module.ssm.gemini_ssm_name
+  media_bucket              = module.s3_media.bucket_name
+  db_stream_arn             = module.database.stream_arn
+}
+
+module "api" {
+  source        = "./module/api"
+  db_table_name = module.database.table_name
+  db_table_arn  = module.database.table_arn
+}
+
+module "s3_frontend" {
+  source = "./module/s3_frontend"
+}

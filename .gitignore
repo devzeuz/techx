@@ -1,2 +1,24 @@
 .terraform/
 .terraform.lock.hcl
+
+# Terraform state / plans (state lives in remote S3 backend)
+*.tfstate
+*.tfstate.*
+*.tfplan
+
+# Lambda build artifacts — rebuilt by Terraform archive_file / layer scripts
+module/lambda/layers/
+**/src/*.zip
+**/build/
+
+# Node / frontend
+node_modules/
+dist/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# OS
+.DS_Store

@@ -1,30 +1,33 @@
-# data "archive_file" "zip_lambda"{
-#     type = "zip"
-#     source_file = "${path.module}/src/api_handler.py"
-#     output_path = "${path.module}/src/api_handler.zip"
-# }
+data "archive_file" "zip_lambda" {
+    type        = "zip"
+    source_file = "${path.module}/src/api_handler.py"
+    output_path = "${path.module}/src/api_handler.zip"
+}
 
-# resource "aws_lambda_function" "api_handler" {
-#   function_name = "api-read-handler"
-#   role          = aws_iam_role.api_role.arn
-#   handler       = "api_handler.lambda_handler"
-#   runtime       = "python3.11"
-#   filename      =  data.archive_file.zip_lambda.output_path
+resource "aws_lambda_function" "api_handler" {
+  function_name = "techx-api-handler"
+  role          = aws_iam_role.api_role.arn
+  handler       = "api_handler.lambda_handler"
+  runtime       = "python3.11"
+  filename      = data.archive_file.zip_lambda.output_path
 
-#   environment {
-#     variables = {
-#       TABLE_NAME = var.db_table_name
-#     }
-#   }
-# }
+  tags = { Purpose = "API-Read-Videos" }
+
+  environment {
+    variables = {
+      TABLE_NAME = var.db_table_name
+    }
+  }
+}
 
 resource "aws_apigatewayv2_api" "http_api" {
-  name          = "tech-content-api"
+  name          = "techx-content-api"
   protocol_type = "HTTP"
   cors_configuration {
     allow_origins = ["*"]
     allow_methods = ["GET"]
   }
+  tags = { Purpose = "Video-Content-API" }
 }
 
 resource "aws_apigatewayv2_integration" "lambda_link" {
@@ -47,4 +50,17 @@ resource "aws_lambda_permission" "allow_api" {
   function_name = aws_lambda_function.api_handler.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.http_api.execution_arn}/*/*"
+}
+# ── GET /videos/{id} — video details + descriptions (Phase 2) ────────────────
+resource "aws_apigatewayv2_route" "get_video_by_id" {
+  api_id    = aws_apigatewayv2_api.http_api.id
+  route_key = "GET /videos/{id}"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda_link.id}"
+}
+
+# ── Default stage with auto-deploy ───────────────────────────────────────────
+resource "aws_apigatewayv2_stage" "default" {
+  api_id      = aws_apigatewayv2_api.http_api.id
+  name        = "$default"
+  auto_deploy = true
 }

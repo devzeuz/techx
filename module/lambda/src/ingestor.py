@@ -18,7 +18,7 @@ def lambda_handler(event, context):
         api_key = get_api_key()
         youtube = build('youtube', 'v3', developerKey=api_key)
 
-        # Batch Search for a topic (Costs 100 units)
+        # Batch Search for a topic (Costs 100 units per call)
         request = youtube.search().list(
             q="AWS Cloud Resume Challenge",
             part="snippet",
@@ -29,7 +29,7 @@ def lambda_handler(event, context):
 
         for item in response.get('items', []):
             video_id = item['id']['videoId']
-            
+
             # Record structure for Single-Table Design
             # PK: VIDEO#<id> | SK: METADATA
             table.put_item(
@@ -40,10 +40,12 @@ def lambda_handler(event, context):
                     'channel': item['snippet']['channelTitle'],
                     'publishedAt': item['snippet']['publishedAt'],
                     'thumbnail': item['snippet']['thumbnails']['high']['url'],
-                    'source': 'YOUTUBE'
+                    'video_url': f"https://www.youtube.com/watch?v={video_id}",
+                    'source': 'YOUTUBE',
+                    'pipeline_status': 'INGESTED',  # Tracks phase progress
                 }
             )
-            
+
         return {"status": "success", "processed": len(response.get('items', []))}
 
     except ClientError as e:

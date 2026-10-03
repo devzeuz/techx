@@ -1,0 +1,143 @@
+"""
+Phase 1.3 — Frame Extractor Lambda  (techx-frame-extractor)
+============================================================
+Trigger : S3 ObjectCreated  on  pause-maps/<video_id>/pause_map.json
+Actions :
+  1. Read pause map from S3
+  2. Fetch video URL from DynamoDB
+  3. For each pause window: download the surrounding video segment via yt-dlp
+     and extract a single representative frame with ffmpeg
+  4. Upload frames (JPEG) to S3  (frames/<video_id>/frame_<timestamp>.jpg)
+  5. Update DynamoDB  →  pipeline_status = FRAMES_READY
+
+Frame naming: frame_<start_seconds_3dp>.jpg  e.g. frame_042.380.jpg
+"""
+import os
+import json
+import subprocess
+import tempfile
+import boto3
+from botocore.exceptions import ClientError
+
+s3       = boto3.client('s3')
+dynamodb = boto3.resource('dynamodb')
+table    = dynamodb.Table(os.environ['TABLE_NAME'])
+BUCKET   = os.environ['MEDIA_BUCKET']
+
+# Capture frame this many seconds BEFORE the pause starts
+# (grab the screen state the instructor was showing just before going silent)
+FRAME_OFFSET_SECONDS = 0.5
+
+
+def lambda_handler(event, context):
+    """
+    S3 notification delivers event['Records'][0]['s3']['object']['key']
+    e.g. "pause-maps/dQw4w9WgXcQ/pause_map.json"
+    """
+    record     = event['Records'][0]
+    pause_key  = record['s3']['object']['key']          # pause-maps/<id>/pause_map.json
+    video_id   = pause_key.split('/')[1]
+
+    try:
+        # ── Step 1: Load pause map ────────────────────────────────────────
+        obj = s3.get_object(Bucket=BUCKET, Key=pause_key)
+        pause_map = json.loads(obj['Body'].read())
+        pauses    = pause_map.get('pauses', [])
+        print(f"Processing {len(pauses)} frames for video {video_id}")
+
+        # ── Step 2: Get video URL from DynamoDB ───────────────────────────
+        response  = table.get_item(Key={'PK': f"VIDEO#{video_id}", 'SK': 'METADATA'})
+        item      = response.get('Item', {})
+        video_url = item.get('video_url')
+        if not video_url:
+            raise ValueError(f"No video_url found in DynamoDB for VIDEO#{video_id}")
+
+        frame_keys = []
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Download best video quality (no audio needed) — full video once
+            video_path = os.path.join(tmpdir, 'video.mp4')
+            dl_result  = subprocess.run(
+                [
+                    'yt-dlp',
+                    '-f', 'bestvideo[ext=mp4]/best[ext=mp4]/best',
+                    '--no-playlist',
+                    '--no-warnings',
+                    '-o', video_path,
+                    video_url,
+                ],
+                capture_output=True, text=True, timeout=840
+            )
+            if dl_result.returncode != 0:
+                print(f"[yt-dlp stderr] {dl_result.stderr}")
+                raise RuntimeError(f"Video download failed: {dl_result.stderr[:300]}")
+
+            print(f"Video downloaded: {video_path}")
+
+            # ── Step 3: Extract one frame per pause window ────────────────
+            for pause in pauses:
+                # Capture frame just BEFORE the pause begins
+                capture_ts = max(0.0, pause['start'] - FRAME_OFFSET_SECONDS)
+                ts_label   = f"{capture_ts:07.3f}".replace('.', '_')  # e.g. 042_380
+                frame_file = os.path.join(tmpdir, f"frame_{ts_label}.jpg")
+
+                ffmpeg_result = subprocess.run(
+                    [
+                        'ffmpeg',
+                        '-ss', str(capture_ts),     # seek to timestamp (fast when before -i)
+                        '-i', video_path,
+                        '-vframes', '1',             # extract exactly 1 frame
+                        '-q:v', '2',                 # JPEG quality (2=best, 31=worst)
+                        '-y',                        # overwrite without asking
+                        frame_file,
+                    ],
+                    capture_output=True, text=True, timeout=30
+                )
+                if ffmpeg_result.returncode != 0:
+                    print(f"ffmpeg error at {capture_ts}s: {ffmpeg_result.stderr[:200]}")
+                    continue
+
+                # ── Step 4: Upload frame to S3 ────────────────────────────
+                s3_frame_key = f"frames/{video_id}/frame_{ts_label}.jpg"
+                s3.upload_file(
+                    frame_file, BUCKET, s3_frame_key,
+                    ExtraArgs={'ContentType': 'image/jpeg'}
+                )
+                frame_keys.append({
+                    'frame_key':  s3_frame_key,
+                    'timestamp':  capture_ts,
+                    'pause_start': pause['start'],
+                    'pause_end':   pause['end'],
+                    'pause_duration': pause['duration'],
+                })
+                print(f"  ✅ Uploaded frame at {capture_ts:.3f}s → {s3_frame_key}")
+
+        # ── Step 5: Update DynamoDB ───────────────────────────────────────
+        table.update_item(
+            Key={'PK': f"VIDEO#{video_id}", 'SK': 'METADATA'},
+            UpdateExpression="SET pipeline_status = :s, frames_extracted = :n",
+            ExpressionAttributeValues={
+                ':s': 'FRAMES_READY',
+                ':n': len(frame_keys),
+            }
+        )
+
+        # Store frame index as a separate DynamoDB record for easy querying
+        table.put_item(Item={
+            'PK':     f"VIDEO#{video_id}",
+            'SK':     'FRAMES#INDEX',
+            'frames': frame_keys,
+            'bucket': BUCKET,
+        })
+
+        print(f"Done. {len(frame_keys)}/{len(pauses)} frames extracted for {video_id}")
+        return {'status': 'success', 'frames_extracted': len(frame_keys)}
+
+    except (ClientError, ValueError, RuntimeError) as e:
+        print(f"Error processing {video_id}: {e}")
+        table.update_item(
+            Key={'PK': f"VIDEO#{video_id}", 'SK': 'METADATA'},
+            UpdateExpression="SET pipeline_status = :s, pipeline_error = :e",
+            ExpressionAttributeValues={':s': 'FRAME_EXTRACTION_FAILED', ':e': str(e)}
+        )
+        raise

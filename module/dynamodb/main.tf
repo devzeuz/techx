@@ -19,6 +19,10 @@ resource "aws_dynamodb_table" "main" {
     enabled = true
   }
 
+  # Enable Streams for the Gemini describer Lambda trigger (Phase 2)
+  stream_enabled   = true
+  stream_view_type = "NEW_AND_OLD_IMAGES"
+
   tags = {
     Name = var.table_name
   }

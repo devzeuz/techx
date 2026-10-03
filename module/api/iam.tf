@@ -1,5 +1,5 @@
 resource "aws_iam_role" "api_role" {
-  name = "api-read-handler-role"
+  name = "techx-api-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -14,8 +14,9 @@ resource "aws_iam_role" "api_role" {
 }
 
 resource "aws_iam_policy" "api_policy" {
-  name        = "api-read-dynamodb-policy"
-  description = "Allows the API Lambda to read from DynamoDB"
+  name        = "techx-api-policy"
+  description = "TechX API Lambda: DynamoDB read-only and CloudWatch logging permissions"
+  tags        = { Purpose = "API-Lambda-Permissions" }
 
   policy = jsonencode({
     Version = "2012-10-17"

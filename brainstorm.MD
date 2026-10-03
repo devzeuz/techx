@@ -1,0 +1,3 @@
+- Lets brainstorm on steps to accomplish this tasks as an addition to Techx
+
+# Cloud-based AI can analyze the visual frames of a curated YouTube video (such as a chart or code being typed) and synthesize audio descriptions of the on-screen action, playing them seamlessly during natural pauses in the instructor's speech, Describing the environment of the video so visually impaired individuals feel a sense of association ( This I believe can also help with attention ), users can ask ai questions based on descriptions made.
