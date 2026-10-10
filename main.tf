@@ -23,23 +23,50 @@ module "s3_media" {
   frame_extractor_invoke_permission_id = module.lambda.frame_extractor_permission_id
 }
 
+# Audio-description pipeline (enhancement to the core platform)
 module "lambda" {
   source                    = "./module/lambda"
-  lambda_role_arn           = module.iam.lambda_role_arn
   pipeline_role_arn         = module.iam.pipeline_role_arn
   pause_builder_role_arn    = module.iam.pause_builder_role_arn
   gemini_describer_role_arn = module.iam.gemini_describer_role_arn
   table_name                = module.database.table_name
-  ssm_name                  = module.ssm.ssm_name
   gemini_ssm_name           = module.ssm.gemini_ssm_name
   media_bucket              = module.s3_media.bucket_name
   db_stream_arn             = module.database.stream_arn
+}
+
+# ─── Core TechX platform ─────────────────────────────────────────────────────
+
+module "cognito" {
+  source = "./module/cognito"
+}
+
+module "platform" {
+  source           = "./module/platform"
+  table_name       = module.database.table_name
+  table_arn        = module.database.table_arn
+  youtube_ssm_name = module.ssm.ssm_name
+  youtube_ssm_arn  = module.ssm.ssm_arn
 }
 
 module "api" {
   source        = "./module/api"
   db_table_name = module.database.table_name
   db_table_arn  = module.database.table_arn
+
+  jwt_issuer        = module.cognito.jwt_issuer
+  jwt_audience      = module.cognito.user_pool_client_id
+  protected_lambdas = module.platform.lambdas
+
+  protected_routes = {
+    # Learners
+    "GET /courses"      = "platform_api"
+    "GET /courses/{id}" = "platform_api"
+    "GET /user"         = "platform_api"
+    "POST /user"        = "platform_api"
+    # Admins only (enforced in Lambda): manual curation
+    "POST /admin/ingest" = "course_ingestor"
+  }
 }
 
 module "s3_frontend" {

@@ -18,34 +18,9 @@ resource "aws_lambda_layer_version" "ffmpeg" {
   description         = "Static ffmpeg binary for video frame extraction"
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Phase 1.1 — Ingestor (YouTube search → DynamoDB metadata)
-# ─────────────────────────────────────────────────────────────────────────────
-
-data "archive_file" "zip_ingestor" {
-  type        = "zip"
-  source_file = "${path.module}/src/ingestor.py"
-  output_path = "${path.module}/src/ingestor.zip"
-}
-
-resource "aws_lambda_function" "ingestor" {
-  function_name    = "techx-ingestor-lambda"
-  role             = var.lambda_role_arn
-  handler          = "ingestor.lambda_handler"
-  runtime          = "python3.11"
-  filename         = data.archive_file.zip_ingestor.output_path
-  source_code_hash = data.archive_file.zip_ingestor.output_base64sha256
-  timeout          = 30
-
-  tags = { Purpose = "YouTube-Video-Ingestion" }
-
-  environment {
-    variables = {
-      TABLE_NAME       = var.table_name
-      API_KEY_SSM_PATH = var.ssm_name
-    }
-  }
-}
+# Note: the former Phase 1.1 hardcoded-search ingestor was removed. Course
+# content now comes from admin curation (module/platform): manual playlist
+# import and the AI Curator.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Phase 1.2a — Audio Downloader (yt-dlp → S3 + Transcribe)
@@ -64,7 +39,7 @@ resource "aws_lambda_function" "audio_downloader" {
   runtime          = "python3.11"
   filename         = data.archive_file.zip_audio_downloader.output_path
   source_code_hash = data.archive_file.zip_audio_downloader.output_base64sha256
-  timeout          = 900  # 15 min max — yt-dlp can be slow on long videos
+  timeout          = 900 # 15 min max — yt-dlp can be slow on long videos
   memory_size      = 1024
 
   layers = [aws_lambda_layer_version.yt_dlp.arn]
@@ -72,7 +47,7 @@ resource "aws_lambda_function" "audio_downloader" {
   tags = { Purpose = "Audio-Download-Transcribe" }
 
   ephemeral_storage {
-    size = 2048  # 2 GB /tmp for large audio files
+    size = 2048 # 2 GB /tmp for large audio files
   }
 
   environment {
@@ -161,7 +136,7 @@ resource "aws_lambda_function" "frame_extractor" {
   runtime          = "python3.11"
   filename         = data.archive_file.zip_frame_extractor.output_path
   source_code_hash = data.archive_file.zip_frame_extractor.output_base64sha256
-  timeout          = 900  # 15 min — full video download + frame extraction
+  timeout          = 900 # 15 min — full video download + frame extraction
   memory_size      = 1024
 
   layers = [
@@ -172,7 +147,7 @@ resource "aws_lambda_function" "frame_extractor" {
   tags = { Purpose = "Frame-Extraction-ffmpeg" }
 
   ephemeral_storage {
-    size = 5120  # 5 GB /tmp for video download + extracted frames
+    size = 5120 # 5 GB /tmp for video download + extracted frames
   }
 
   environment {
@@ -217,7 +192,7 @@ resource "aws_lambda_function" "gemini_describer" {
   runtime          = "python3.11"
   filename         = data.archive_file.zip_gemini_describer.output_path
   source_code_hash = data.archive_file.zip_gemini_describer.output_base64sha256
-  timeout          = 900   # Large batches of frames + Gemini API calls can take time
+  timeout          = 900 # Large batches of frames + Gemini API calls can take time
   memory_size      = 512
 
   layers = [aws_lambda_layer_version.google_genai.arn]
@@ -247,8 +222,8 @@ resource "aws_lambda_event_source_mapping" "dynamo_to_gemini" {
       pattern = jsonencode({
         dynamodb = {
           NewImage = {
-            SK               = { S = ["METADATA"] }
-            pipeline_status  = { S = ["FRAMES_READY"] }
+            SK              = { S = ["METADATA"] }
+            pipeline_status = { S = ["FRAMES_READY"] }
           }
         }
       })

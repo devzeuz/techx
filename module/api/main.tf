@@ -1,7 +1,7 @@
 data "archive_file" "zip_lambda" {
-    type        = "zip"
-    source_file = "${path.module}/src/api_handler.py"
-    output_path = "${path.module}/src/api_handler.zip"
+  type        = "zip"
+  source_file = "${path.module}/src/api_handler.py"
+  output_path = "${path.module}/src/api_handler.zip"
 }
 
 resource "aws_lambda_function" "api_handler" {
@@ -25,7 +25,9 @@ resource "aws_apigatewayv2_api" "http_api" {
   protocol_type = "HTTP"
   cors_configuration {
     allow_origins = ["*"]
-    allow_methods = ["GET"]
+    allow_methods = ["GET", "POST", "OPTIONS"]
+    allow_headers = ["authorization", "content-type"]
+    max_age       = 3600
   }
   tags = { Purpose = "Video-Content-API" }
 }
@@ -63,4 +65,50 @@ resource "aws_apigatewayv2_stage" "default" {
   api_id      = aws_apigatewayv2_api.http_api.id
   name        = "$default"
   auto_deploy = true
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Authenticated platform routes (Cognito JWT)
+# Admin-only routes are additionally enforced inside each Lambda.
+# ─────────────────────────────────────────────────────────────────────────────
+
+resource "aws_apigatewayv2_authorizer" "cognito" {
+  api_id           = aws_apigatewayv2_api.http_api.id
+  name             = "techx-cognito-jwt"
+  authorizer_type  = "JWT"
+  identity_sources = ["$request.header.Authorization"]
+
+  jwt_configuration {
+    issuer   = var.jwt_issuer
+    audience = [var.jwt_audience]
+  }
+}
+
+resource "aws_apigatewayv2_integration" "protected" {
+  for_each = var.protected_lambdas
+
+  api_id                 = aws_apigatewayv2_api.http_api.id
+  integration_type       = "AWS_PROXY"
+  integration_uri        = each.value.invoke_arn
+  payload_format_version = "2.0"
+}
+
+resource "aws_apigatewayv2_route" "protected" {
+  for_each = var.protected_routes
+
+  api_id             = aws_apigatewayv2_api.http_api.id
+  route_key          = each.key
+  target             = "integrations/${aws_apigatewayv2_integration.protected[each.value].id}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_lambda_permission" "protected" {
+  for_each = var.protected_lambdas
+
+  statement_id  = "AllowHttpApiInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = each.value.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.http_api.execution_arn}/*/*"
 }

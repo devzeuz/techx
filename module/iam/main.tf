@@ -1,65 +1,4 @@
-resource "aws_iam_role" "ingestor_role" {
-  name = "techx-ingestor-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Action = "sts:AssumeRole"
-      Effect = "Allow"
-      Principal = { Service = "lambda.amazonaws.com" }
-    }]
-  })
-}
-
-resource "aws_iam_policy" "ingestor_policy" {
-  name        = "techx-ingestor-policy"
-  description = "TechX ingestor Lambda: DynamoDB, SSM, S3, Polly, Transcribe permissions"
-  tags        = { Purpose = "Ingestor-Lambda-Permissions" }
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect   = "Allow"
-        Action   = ["dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:UpdateItem", "dynamodb:Query"]
-        Resource = var.table_arn
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["ssm:GetParameter"]
-        Resource = [var.ssm_arn, var.gemini_ssm_arn]
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
-        Resource = "arn:aws:logs:*:*:*"
-      },
-      {
-        # S3: store raw frames, audio clips, and enhanced video outputs
-        Effect   = "Allow"
-        Action   = ["s3:PutObject", "s3:GetObject", "s3:ListBucket"]
-        Resource = ["arn:aws:s3:::techx-ai-media-*", "arn:aws:s3:::techx-ai-media-*/*"]
-      },
-      {
-        # Amazon Polly: synthesize audio descriptions via Neural TTS
-        Effect   = "Allow"
-        Action   = ["polly:SynthesizeSpeech"]
-        Resource = "*"
-      },
-      {
-        # AWS Transcribe: generate word-level timestamp maps for pause detection
-        Effect   = "Allow"
-        Action   = ["transcribe:StartTranscriptionJob", "transcribe:GetTranscriptionJob"]
-        Resource = "*"
-      }
-    ]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "attach" {
-  role       = aws_iam_role.ingestor_role.name
-  policy_arn = aws_iam_policy.ingestor_policy.arn
-}
+# (Former ingestor role removed — curation Lambdas own their roles in module/platform.)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -209,10 +148,10 @@ resource "aws_iam_policy" "gemini_describer_policy" {
         Resource = [var.media_bucket_arn, "${var.media_bucket_arn}/*"]
       },
       {
-        Effect   = "Allow"
-        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem",
-                    "dynamodb:Query", "dynamodb:GetShardIterator",
-                    "dynamodb:DescribeStream", "dynamodb:ListStreams", "dynamodb:GetRecords"]
+        Effect = "Allow"
+        Action = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem",
+          "dynamodb:Query", "dynamodb:GetShardIterator",
+        "dynamodb:DescribeStream", "dynamodb:ListStreams", "dynamodb:GetRecords"]
         Resource = [var.table_arn, "${var.table_arn}/stream/*"]
       },
       {

@@ -1,17 +1,9 @@
-variable "lambda_role_arn" {
-  description = "The ARN of the IAM Role for the ingestor Lambda"
-  type        = string
-}
 
 variable "table_name" {
   description = "The name of the DynamoDB table"
   type        = string
 }
 
-variable "ssm_name" {
-  description = "The SSM Parameter name for the YouTube API key"
-  type        = string
-}
 
 variable "media_bucket" {
   description = "Name of the S3 media bucket (audio, frames, transcripts)"
