@@ -9,5 +9,9 @@ output "lambdas" {
       invoke_arn    = aws_lambda_function.course_ingestor.invoke_arn
       function_name = aws_lambda_function.course_ingestor.function_name
     }
+    descriptions = {
+      invoke_arn    = aws_lambda_function.descriptions.invoke_arn
+      function_name = aws_lambda_function.descriptions.function_name
+    }
   }
 }

@@ -25,6 +25,22 @@ BUCKET   = os.environ['MEDIA_BUCKET']
 MIN_PAUSE_SECONDS = 0.8   # Minimum silence to qualify as an insertion window
 MAX_DESCRIPTION_PAUSE = 8.0  # Cap pauses to avoid over-long windows
 
+# Each selected window becomes one Gemini + Polly description, and the player
+# pauses the video to play it. Keep them few and spread out.
+MAX_WINDOWS        = int(os.environ.get('MAX_DESCRIPTIONS', '30'))
+MIN_SPACING_SECONDS = float(os.environ.get('MIN_DESCRIPTION_SPACING', '20'))
+
+
+def select_windows(windows: list) -> list:
+    """Prefer the longest pauses, enforce spacing, cap count, return in time order."""
+    chosen = []
+    for w in sorted(windows, key=lambda w: w['duration'], reverse=True):
+        if len(chosen) >= MAX_WINDOWS:
+            break
+        if all(abs(w['start'] - c['start']) >= MIN_SPACING_SECONDS for c in chosen):
+            chosen.append(w)
+    return sorted(chosen, key=lambda w: w['start'])
+
 
 def lambda_handler(event, context):
     """
@@ -79,7 +95,9 @@ def lambda_handler(event, context):
 
             prev_end = end
 
-        print(f"Found {len(pause_windows)} pause windows for video {video_id}")
+        detected = len(pause_windows)
+        pause_windows = select_windows(pause_windows)
+        print(f"Found {detected} pause windows for video {video_id}; selected {len(pause_windows)}")
 
         # ── Step 3: Write pause map to S3 ────────────────────────────────
         pause_map_key = f"pause-maps/{video_id}/pause_map.json"
@@ -106,6 +124,11 @@ def lambda_handler(event, context):
             }
         )
 
-    except ClientError as e:
-        print(f"AWS error processing {job_name}: {e}")
+    except (ClientError, KeyError, ValueError) as e:
+        print(f"Error processing {job_name}: {e}")
+        table.update_item(
+            Key={'PK': f"VIDEO#{video_id}", 'SK': 'METADATA'},
+            UpdateExpression="SET pipeline_status = :s, pipeline_error = :e",
+            ExpressionAttributeValues={':s': 'PAUSE_MAP_FAILED', ':e': str(e)[:1000]},
+        )
         raise

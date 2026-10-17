@@ -42,7 +42,11 @@ resource "aws_lambda_function" "audio_downloader" {
   timeout          = 900 # 15 min max — yt-dlp can be slow on long videos
   memory_size      = 1024
 
-  layers = [aws_lambda_layer_version.yt_dlp.arn]
+  # ffmpeg is required by yt-dlp to extract mp3 audio
+  layers = [
+    aws_lambda_layer_version.yt_dlp.arn,
+    aws_lambda_layer_version.ffmpeg.arn,
+  ]
 
   tags = { Purpose = "Audio-Download-Transcribe" }
 
@@ -54,8 +58,16 @@ resource "aws_lambda_function" "audio_downloader" {
     variables = {
       TABLE_NAME   = var.table_name
       MEDIA_BUCKET = var.media_bucket
+      FFMPEG_PATH  = "/opt/bin/ffmpeg"
     }
   }
+}
+
+# Failures are recorded in DynamoDB; don't silently re-run a 15-min job twice.
+resource "aws_lambda_function_event_invoke_config" "audio_downloader" {
+  function_name                = aws_lambda_function.audio_downloader.function_name
+  maximum_retry_attempts       = 0
+  maximum_event_age_in_seconds = 3600
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -166,6 +178,12 @@ resource "aws_lambda_permission" "allow_s3_frame_extractor" {
   principal     = "s3.amazonaws.com"
   source_arn    = "arn:aws:s3:::${var.media_bucket}"
 }
+
+resource "aws_lambda_function_event_invoke_config" "frame_extractor" {
+  function_name                = aws_lambda_function.frame_extractor.function_name
+  maximum_retry_attempts       = 0
+  maximum_event_age_in_seconds = 3600
+}
 # ─────────────────────────────────────────────────────────────────────────────
 # Phase 2 — Gemini Describer + Polly TTS
 # Triggered by DynamoDB Streams when pipeline_status = FRAMES_READY
@@ -215,6 +233,10 @@ resource "aws_lambda_event_source_mapping" "dynamo_to_gemini" {
   function_name     = aws_lambda_function.gemini_describer.arn
   starting_position = "LATEST"
   batch_size        = 5
+
+  # Never let one bad record block the stream indefinitely.
+  maximum_retry_attempts         = 1
+  bisect_batch_on_function_error = true
 
   filter_criteria {
     filter {

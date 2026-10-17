@@ -3,8 +3,10 @@ import { apiFetch } from './Api';
 import { useNavigate } from 'react-router-dom';
 import { Shield, Youtube, Type, ArrowLeft, AlertCircle, CheckCircle } from 'lucide-react';
 import Spinner from './components/Spinner';
+import AdminDescriptions from './AdminDescriptions';
 
 const Admin = () => {
+  const [tab,      setTab]      = useState('manual');
   const [playlist, setPlaylist] = useState('');
   const [title,    setTitle]    = useState('');
   // status: null | { type: 'loading' | 'success' | 'error' | 'conflict', message: string }
@@ -94,7 +96,22 @@ const Admin = () => {
 
           <div className="divider" />
 
+          <div role="tablist" aria-label="Admin tools" style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+            {[['manual', 'Manual Import'], ['ad', 'Audio Descriptions']].map(([key, label]) => (
+              <button key={key} id={`admin-tab-${key}`} type="button" role="tab"
+                aria-selected={tab === key}
+                className={`btn ${tab === key ? 'btn-primary' : 'btn-ghost'}`}
+                style={{ padding: '8px 16px' }}
+                onClick={() => setTab(key)}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {tab === 'ad' && <AdminDescriptions />}
+
           {/* Form card */}
+          {tab === 'manual' && (
           <div className="card" style={{ padding: '32px', cursor: 'default' }}>
             <h2
               style={{
@@ -219,6 +236,7 @@ const Admin = () => {
               </div>
             )}
           </div>
+          )}
 
         </div>
       </div>

@@ -13,9 +13,11 @@ Actions :
 Frame naming: frame_<start_seconds_3dp>.jpg  e.g. frame_042.380.jpg
 """
 import os
+import sys
 import json
 import subprocess
 import tempfile
+from decimal import Decimal
 import boto3
 from botocore.exceptions import ClientError
 
@@ -55,14 +57,17 @@ def lambda_handler(event, context):
         frame_keys = []
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            # Download best video quality (no audio needed) — full video once
+            # Download video only (no audio needed), capped at 720p — enough
+            # to read code/slides, and keeps /tmp and download time bounded.
+            # `python -m yt_dlp`: the layer's console script is not on PATH.
             video_path = os.path.join(tmpdir, 'video.mp4')
             dl_result  = subprocess.run(
                 [
-                    'yt-dlp',
-                    '-f', 'bestvideo[ext=mp4]/best[ext=mp4]/best',
+                    sys.executable, '-m', 'yt_dlp',
+                    '-f', 'bestvideo[height<=720][ext=mp4]/best[height<=720][ext=mp4]/best[height<=720]/best',
                     '--no-playlist',
                     '--no-warnings',
+                    '--no-cache-dir',
                     '-o', video_path,
                     video_url,
                 ],
@@ -113,6 +118,16 @@ def lambda_handler(event, context):
                 print(f"  ✅ Uploaded frame at {capture_ts:.3f}s → {s3_frame_key}")
 
         # ── Step 5: Update DynamoDB ───────────────────────────────────────
+        # Write the frame index FIRST: flipping status to FRAMES_READY fires
+        # the Gemini describer via DynamoDB Streams, and it reads this index.
+        # boto3 rejects Python floats, so round-trip through Decimal.
+        table.put_item(Item={
+            'PK':     f"VIDEO#{video_id}",
+            'SK':     'FRAMES#INDEX',
+            'frames': json.loads(json.dumps(frame_keys), parse_float=Decimal),
+            'bucket': BUCKET,
+        })
+
         table.update_item(
             Key={'PK': f"VIDEO#{video_id}", 'SK': 'METADATA'},
             UpdateExpression="SET pipeline_status = :s, frames_extracted = :n",
@@ -122,22 +137,14 @@ def lambda_handler(event, context):
             }
         )
 
-        # Store frame index as a separate DynamoDB record for easy querying
-        table.put_item(Item={
-            'PK':     f"VIDEO#{video_id}",
-            'SK':     'FRAMES#INDEX',
-            'frames': frame_keys,
-            'bucket': BUCKET,
-        })
-
         print(f"Done. {len(frame_keys)}/{len(pauses)} frames extracted for {video_id}")
         return {'status': 'success', 'frames_extracted': len(frame_keys)}
 
-    except (ClientError, ValueError, RuntimeError) as e:
+    except Exception as e:  # noqa: BLE001 — any failure must be visible to admins
         print(f"Error processing {video_id}: {e}")
         table.update_item(
             Key={'PK': f"VIDEO#{video_id}", 'SK': 'METADATA'},
             UpdateExpression="SET pipeline_status = :s, pipeline_error = :e",
-            ExpressionAttributeValues={':s': 'FRAME_EXTRACTION_FAILED', ':e': str(e)}
+            ExpressionAttributeValues={':s': 'FRAME_EXTRACTION_FAILED', ':e': str(e)[:1000]}
         )
         raise

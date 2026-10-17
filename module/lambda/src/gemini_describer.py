@@ -30,6 +30,7 @@ ssm      = boto3.client('ssm')
 dynamodb = boto3.resource('dynamodb')
 table    = dynamodb.Table(os.environ['TABLE_NAME'])
 BUCKET   = os.environ['MEDIA_BUCKET']
+MODEL    = os.environ.get('GEMINI_MODEL', 'gemini-2.5-flash')  # 1.5-flash is retired
 
 # ─── Gemini Agent: Function Definitions ──────────────────────────────────────
 # These tools force Gemini to make STRUCTURED DECISIONS — not just free-form text.
@@ -115,7 +116,7 @@ def agent_analyze_frame(model, image_data: bytes, mime_type: str = 'image/jpeg')
 
     # ── Step 1: Classify + decide ────────────────────────────────────────────
     classify_model = genai.GenerativeModel(
-        model_name='gemini-1.5-flash',
+        model_name=MODEL,
         tools=[{"function_declarations": [CLASSIFY_FRAME_TOOL]}],
         system_instruction=(
             "You are an AI agent analyzing video frames from a tech tutorial. "
@@ -154,7 +155,7 @@ def agent_analyze_frame(model, image_data: bytes, mime_type: str = 'image/jpeg')
     system_instruction = DESCRIPTION_PROMPTS.get(frame_type, DESCRIPTION_PROMPTS['OTHER'])
 
     describe_model = genai.GenerativeModel(
-        model_name='gemini-1.5-flash',
+        model_name=MODEL,
         tools=[{"function_declarations": [GENERATE_DESCRIPTION_TOOL]}],
         system_instruction=system_instruction
     )
@@ -227,14 +228,15 @@ def lambda_handler(event, context):
         try:
             result = process_video(video_id)
             processed.append(result)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
+            # Record the failure but do NOT re-raise: a raised error makes the
+            # DynamoDB stream retry the batch and block newer records.
             print(f"Error processing {video_id}: {e}")
             table.update_item(
                 Key={'PK': f"VIDEO#{video_id}", 'SK': 'METADATA'},
                 UpdateExpression="SET pipeline_status = :s, pipeline_error = :e",
-                ExpressionAttributeValues={':s': 'DESCRIPTION_FAILED', ':e': str(e)}
+                ExpressionAttributeValues={':s': 'DESCRIPTION_FAILED', ':e': str(e)[:1000]}
             )
-            raise
 
     return {'processed': len(processed), 'videos': processed}
 
@@ -250,10 +252,14 @@ def process_video(video_id: str) -> dict:
 
     # Load frame index from DynamoDB
     frame_index_resp = table.get_item(Key={'PK': f"VIDEO#{video_id}", 'SK': 'FRAMES#INDEX'})
-    frame_index = frame_index_resp.get('Item', {}).get('frames', [])
-
-    if not frame_index:
+    if 'Item' not in frame_index_resp:
         raise ValueError(f"No frame index found for VIDEO#{video_id}")
+    frame_index = frame_index_resp['Item'].get('frames', [])
+    # DynamoDB returns Decimals — normalise numeric fields to float.
+    for f in frame_index:
+        for k in ('timestamp', 'pause_start', 'pause_end', 'pause_duration'):
+            if k in f:
+                f[k] = float(f[k])
 
     print(f"Processing {len(frame_index)} frames through Gemini agent")
 
@@ -331,6 +337,7 @@ def process_video(video_id: str) -> dict:
             'PK':             f"VIDEO#{video_id}",
             'SK':             f"DESCRIPTION#{ts_str}",
             'timestamp_s':    str(timestamp),
+            'pause_start_s':  str(frame.get('pause_start', timestamp)),
             'frame_type':     result['frame_type'],
             'dominant_topic': result['dominant_topic'],
             'description':    description_text,

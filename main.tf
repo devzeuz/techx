@@ -47,6 +47,10 @@ module "platform" {
   table_arn        = module.database.table_arn
   youtube_ssm_name = module.ssm.ssm_name
   youtube_ssm_arn  = module.ssm.ssm_arn
+
+  media_bucket_name    = module.s3_media.bucket_name
+  media_bucket_arn     = module.s3_media.bucket_arn
+  audio_downloader_arn = module.lambda.audio_downloader_arn
 }
 
 module "api" {
@@ -64,8 +68,13 @@ module "api" {
     "GET /courses/{id}" = "platform_api"
     "GET /user"         = "platform_api"
     "POST /user"        = "platform_api"
+    # Learners: audio descriptions (enhancement)
+    "GET /courses/{id}/descriptions" = "descriptions"
+    "GET /videos/{id}/descriptions"  = "descriptions"
     # Admins only (enforced in Lambda): manual curation
     "POST /admin/ingest" = "course_ingestor"
+    # Admins only (enforced in Lambda): queue audio-description generation
+    "POST /admin/descriptions" = "descriptions"
   }
 }
 

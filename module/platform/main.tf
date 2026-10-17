@@ -118,3 +118,65 @@ resource "aws_lambda_function" "course_ingestor" {
     }
   }
 }
+
+# ── Audio descriptions (bridge to module/lambda pipeline) ────────────────────
+
+resource "aws_iam_role" "descriptions" {
+  name               = "techx-descriptions-role"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
+  tags               = { Purpose = "Audio-Descriptions-API" }
+}
+
+resource "aws_iam_role_policy" "descriptions" {
+  name = "techx-descriptions-policy"
+  role = aws_iam_role.descriptions.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = ["dynamodb:Query", "dynamodb:GetItem", "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem", "dynamodb:BatchWriteItem"]
+        Resource = var.table_arn
+      },
+      {
+        # Presigning audio URLs: the signer must be allowed to read the object
+        Effect   = "Allow"
+        Action   = ["s3:GetObject"]
+        Resource = "${var.media_bucket_arn}/audio-descriptions/*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["lambda:InvokeFunction"]
+        Resource = var.audio_downloader_arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "arn:aws:logs:*:*:*"
+      }
+    ]
+  })
+}
+
+resource "aws_lambda_function" "descriptions" {
+  function_name    = "techx-descriptions"
+  role             = aws_iam_role.descriptions.arn
+  handler          = "descriptions.lambda_handler"
+  runtime          = "python3.11"
+  filename         = data.archive_file.platform_src.output_path
+  source_code_hash = data.archive_file.platform_src.output_base64sha256
+  timeout          = 29
+  memory_size      = 256
+
+  tags = { Purpose = "Audio-Descriptions-API" }
+
+  environment {
+    variables = {
+      TABLE_NAME             = var.table_name
+      MEDIA_BUCKET           = var.media_bucket_name
+      AUDIO_DOWNLOADER_ARN   = var.audio_downloader_arn
+      MAX_VIDEOS_PER_REQUEST = "10"
+    }
+  }
+}

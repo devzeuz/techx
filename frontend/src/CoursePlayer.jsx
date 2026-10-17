@@ -2,9 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiRequest } from './Api';
 import YouTube from 'react-youtube';
-import { CheckCircle, Play, Save, RotateCcw } from 'lucide-react';
+import { CheckCircle, Play, Save, RotateCcw, Volume2, VolumeX } from 'lucide-react';
 import SkeletonLoader from './components/SkeletonLoader';
 import Spinner from './components/Spinner';
+
+const AD_STORAGE_KEY = 'techx_ad_enabled';
+const AD_READY = 'DESCRIPTIONS_READY';
+const CUE_WINDOW_S = 2.5; // poll is 1s; give a cue a little slack to be caught
 
 const CoursePlayer = ({ user }) => {
   const { courseId } = useParams();
@@ -27,7 +31,19 @@ const CoursePlayer = ({ user }) => {
   const [overlayReason,setOverlayReason]= useState(null);
   const [nextVideo,    setNextVideo]    = useState(null);
 
-  const timerRef = useRef(null);
+  // Audio descriptions (enhancement)
+  const [adEnabled,  setAdEnabled]  = useState(() => localStorage.getItem(AD_STORAGE_KEY) === 'true');
+  const [adStatus,   setAdStatus]   = useState({});   // { [ytId]: {status, count} }
+  const [cues,       setCues]       = useState([]);
+  const [activeDesc, setActiveDesc] = useState(null); // text currently being narrated
+
+  const timerRef      = useRef(null);
+  const cuesRef       = useRef([]);
+  const playedRef     = useRef(new Set());
+  const audioRef      = useRef(null);
+  const adPlayingRef  = useRef(false);
+  const adEnabledRef  = useRef(adEnabled);
+  const lastTimeRef   = useRef(0);
 
   /* ── Load ─────────────────────────────────────────── */
   const markAsWatched = async (video) => {
@@ -51,6 +67,67 @@ const CoursePlayer = ({ user }) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadCourse(); }, [courseId, user]);
 
+  /* ── Audio descriptions ───────────────────────────── */
+  const stopDescription = (resume) => {
+    if (audioRef.current) {
+      audioRef.current.onended = null;
+      audioRef.current.onerror = null;
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    const wasPlaying = adPlayingRef.current;
+    adPlayingRef.current = false;
+    setActiveDesc(null);
+    if (resume && wasPlaying && player) player.playVideo();
+  };
+
+  const playCue = (cue) => {
+    playedRef.current.add(cue.start);
+    adPlayingRef.current = true;
+    setActiveDesc(cue.text);
+    player.pauseVideo();
+    const audio = new Audio(cue.audioUrl);
+    audioRef.current = audio;
+    audio.onended = () => stopDescription(true);
+    audio.onerror = () => stopDescription(true); // never leave the learner stuck
+    audio.play().catch(() => stopDescription(true));
+  };
+
+  const toggleAd = () => {
+    const next = !adEnabled;
+    setAdEnabled(next);
+    adEnabledRef.current = next;
+    localStorage.setItem(AD_STORAGE_KEY, String(next));
+    if (!next) stopDescription(true);
+  };
+
+  // Course-level AD status → sidebar badges
+  useEffect(() => {
+    apiRequest(`/courses/${courseId}/descriptions`).then(d => setAdStatus(d?.videos ?? {}));
+  }, [courseId]);
+
+  // Cues for the active lesson
+  useEffect(() => {
+    if (!activeVideo) return;
+    stopDescription(false);
+    playedRef.current = new Set();
+    lastTimeRef.current = 0;
+    cuesRef.current = [];
+    setCues([]);
+    let cancelled = false;
+    apiRequest(`/videos/${activeVideo.YouTubeID}/descriptions`).then(d => {
+      if (cancelled || d?.status !== AD_READY) return;
+      cuesRef.current = d.descriptions ?? [];
+      setCues(cuesRef.current);
+    });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeVideo]);
+
+  // Stop narration when leaving the page
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => () => stopDescription(false), []);
+
   useEffect(() => {
     if (!activeVideo || !course) return;
     setShowOverlay(false);
@@ -65,6 +142,19 @@ const CoursePlayer = ({ user }) => {
         try {
           const cur  = player.getCurrentTime();
           const dur  = player.getDuration();
+
+          // Rewound? Let the learner hear descriptions after that point again.
+          if (cur < lastTimeRef.current - 3) {
+            for (const s of [...playedRef.current]) if (s > cur) playedRef.current.delete(s);
+          }
+          lastTimeRef.current = cur;
+
+          if (adEnabledRef.current && !adPlayingRef.current) {
+            const cue = cuesRef.current.find(c =>
+              !playedRef.current.has(c.start) && cur >= c.start && cur < c.start + CUE_WINDOW_S);
+            if (cue) { playCue(cue); return; }
+          }
+
           if (dur > 0 && (dur - cur) < 20) finishVideo();
         } catch { /* ignore buffering errors */ }
       }, 1000);
@@ -120,6 +210,7 @@ const CoursePlayer = ({ user }) => {
       if (overlayReason === 'PAUSE') setShowOverlay(false);
     } else if (s === 2) {
       setIsPlaying(false);
+      if (adPlayingRef.current) return; // paused by us for a description
       if (overlayReason !== 'END') { setOverlayReason('PAUSE'); setShowOverlay(true); }
     } else if (s === 0) {
       setIsPlaying(false);
@@ -172,6 +263,17 @@ const CoursePlayer = ({ user }) => {
               style={{ height: '100%', width: '100%' }}
             />
           </div>
+
+          {/* Audio description caption (visual) */}
+          {activeDesc && (
+            <div className="ad-caption" aria-hidden="true">
+              <span className="ad-caption-tag"><Volume2 size={13} /> AD</span>
+              <span>{activeDesc}</span>
+              <button type="button" className="ad-caption-skip" onClick={() => stopDescription(true)}>
+                Skip
+              </button>
+            </div>
+          )}
 
           {/* Overlay */}
           {showOverlay && (
@@ -254,14 +356,29 @@ const CoursePlayer = ({ user }) => {
             >
               {activeVideo.VideoTitle}
             </h1>
-            <button
-              onClick={() => markAsWatched(activeVideo)}
-              className={`btn ${watched.has(activeVideo.YouTubeID) ? 'btn-success' : 'btn-ghost'}`}
-              style={{ padding: '10px 16px', flexShrink: 0 }}
-            >
-              <CheckCircle size={16} />
-              {watched.has(activeVideo.YouTubeID) ? 'Watched' : 'Mark Complete'}
-            </button>
+            <div style={{ display: 'flex', gap: '8px', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <button
+                id="ad-toggle"
+                type="button"
+                onClick={toggleAd}
+                aria-pressed={adEnabled}
+                disabled={cues.length === 0}
+                title={cues.length === 0 ? 'No audio descriptions for this lesson yet' : 'Toggle audio descriptions'}
+                className={`btn ${adEnabled && cues.length > 0 ? 'btn-primary' : 'btn-ghost'}`}
+                style={{ padding: '10px 16px' }}
+              >
+                {adEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+                Audio Descriptions: {adEnabled ? 'ON' : 'OFF'}
+              </button>
+              <button
+                onClick={() => markAsWatched(activeVideo)}
+                className={`btn ${watched.has(activeVideo.YouTubeID) ? 'btn-success' : 'btn-ghost'}`}
+                style={{ padding: '10px 16px' }}
+              >
+                <CheckCircle size={16} />
+                {watched.has(activeVideo.YouTubeID) ? 'Watched' : 'Mark Complete'}
+              </button>
+            </div>
           </div>
 
           {/* Course progress mini-bar */}
@@ -284,6 +401,11 @@ const CoursePlayer = ({ user }) => {
                 }}
               />
             </div>
+          </div>
+
+          {/* Screen-reader announcement of the current description */}
+          <div className="sr-only" aria-live="assertive" aria-atomic="true">
+            {activeDesc ? `Audio description: ${activeDesc}` : ''}
           </div>
 
           {/* Notes */}
@@ -358,6 +480,11 @@ const CoursePlayer = ({ user }) => {
                   }}
                 >
                   {vid.VideoTitle}
+                  {adStatus[vid.YouTubeID]?.status === AD_READY && (
+                    <span className="badge badge-gold ad-badge" title="Audio descriptions available">
+                      AD
+                    </span>
+                  )}
                 </div>
                 {isWatched && (
                   <span
