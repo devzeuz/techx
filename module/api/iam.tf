@@ -22,8 +22,8 @@ resource "aws_iam_policy" "api_policy" {
     Version = "2012-10-17"
     Statement = [
       {
-        # Principle of Least Privilege: only 'Get' and 'Query'
-        Action   = ["dynamodb:GetItem", "dynamodb:Query"]
+        # Read permissions: Get, Query, Scan
+        Action   = ["dynamodb:GetItem", "dynamodb:Query", "dynamodb:Scan"]
         Effect   = "Allow"
         Resource = var.db_table_arn
       },

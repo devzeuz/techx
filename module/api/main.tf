@@ -9,7 +9,8 @@ resource "aws_lambda_function" "api_handler" {
   role          = aws_iam_role.api_role.arn
   handler       = "api_handler.lambda_handler"
   runtime       = "python3.11"
-  filename      = data.archive_file.zip_lambda.output_path
+  filename         = data.archive_file.zip_lambda.output_path
+  source_code_hash = data.archive_file.zip_lambda.output_base64sha256
 
   tags = { Purpose = "API-Read-Videos" }
 
