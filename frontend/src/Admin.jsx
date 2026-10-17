@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Shield, Youtube, Type, ArrowLeft, AlertCircle, CheckCircle } from 'lucide-react';
 import Spinner from './components/Spinner';
 import AdminDescriptions from './AdminDescriptions';
+import AdminCurator from './AdminCurator';
 
 const Admin = () => {
   const [tab,      setTab]      = useState('manual');
@@ -58,7 +59,7 @@ const Admin = () => {
           <ArrowLeft size={15} /> Back to Dashboard
         </button>
 
-        <div style={{ maxWidth: '580px' }}>
+        <div style={{ maxWidth: tab === 'curator' ? '900px' : '580px', transition: 'max-width 0.2s ease' }}>
 
           {/* Header */}
           <div
@@ -96,8 +97,12 @@ const Admin = () => {
 
           <div className="divider" />
 
-          <div role="tablist" aria-label="Admin tools" style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-            {[['manual', 'Manual Import'], ['ad', 'Audio Descriptions']].map(([key, label]) => (
+          <div role="tablist" aria-label="Admin tools" style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+            {[
+              ['manual', 'Manual Playlist Import'],
+              ['curator', 'AI Curator (Agent)'],
+              ['ad', 'Audio Descriptions']
+            ].map(([key, label]) => (
               <button key={key} id={`admin-tab-${key}`} type="button" role="tab"
                 aria-selected={tab === key}
                 className={`btn ${tab === key ? 'btn-primary' : 'btn-ghost'}`}
@@ -109,6 +114,7 @@ const Admin = () => {
           </div>
 
           {tab === 'ad' && <AdminDescriptions />}
+          {tab === 'curator' && <AdminCurator />}
 
           {/* Form card */}
           {tab === 'manual' && (

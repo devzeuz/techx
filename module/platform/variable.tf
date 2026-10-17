@@ -32,3 +32,13 @@ variable "audio_downloader_arn" {
   description = "ARN of the audio-downloader Lambda (entry point of the AD pipeline)"
   type        = string
 }
+
+variable "gemini_ssm_name" {
+  description = "SSM parameter name holding the Gemini API key"
+  type        = string
+}
+
+variable "gemini_ssm_arn" {
+  description = "SSM parameter ARN holding the Gemini API key"
+  type        = string
+}

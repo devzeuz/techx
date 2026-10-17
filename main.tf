@@ -51,6 +51,8 @@ module "platform" {
   media_bucket_name    = module.s3_media.bucket_name
   media_bucket_arn     = module.s3_media.bucket_arn
   audio_downloader_arn = module.lambda.audio_downloader_arn
+  gemini_ssm_name      = module.ssm.gemini_ssm_name
+  gemini_ssm_arn       = module.ssm.gemini_ssm_arn
 }
 
 module "api" {
@@ -75,6 +77,12 @@ module "api" {
     "POST /admin/ingest" = "course_ingestor"
     # Admins only (enforced in Lambda): queue audio-description generation
     "POST /admin/descriptions" = "descriptions"
+    # Admins only (enforced in Lambda): AI Curator
+    "POST /admin/curations"              = "curator"
+    "GET /admin/curations"               = "curator"
+    "GET /admin/curations/{id}"          = "curator"
+    "DELETE /admin/curations/{id}"       = "curator"
+    "POST /admin/curations/{id}/publish" = "curator"
   }
 }
 

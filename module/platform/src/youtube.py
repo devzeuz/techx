@@ -78,3 +78,84 @@ def fetch_playlist_items(playlist_id: str) -> list:
         page_token = data.get("nextPageToken")
         if not page_token:
             return videos
+
+
+def parse_iso_duration(duration_str: str) -> int:
+    """Parses ISO 8601 duration e.g. PT1H15M33S, PT45S, PT15M into total seconds."""
+    if not duration_str:
+        return 0
+    match = re.match(r"^P(?:(\d+)D)?T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$", duration_str)
+    if not match:
+        return 0
+    days = int(match.group(1) or 0)
+    hours = int(match.group(2) or 0)
+    minutes = int(match.group(3) or 0)
+    seconds = int(match.group(4) or 0)
+    return days * 86400 + hours * 3600 + minutes * 60 + seconds
+
+
+def search_videos(query: str, max_results: int = 10, order: str = "relevance") -> list:
+    """Search YouTube for videos. Returns list of {id, title, description, channelTitle, publishedAt, thumbnail}."""
+    query = (query or "").strip()
+    if not query:
+        return []
+    params = {
+        "part": "snippet",
+        "type": "video",
+        "q": query,
+        "maxResults": min(max(max_results, 1), 25),
+        "order": order if order in ("relevance", "viewCount", "rating", "date") else "relevance",
+    }
+    data = _get("search", params)
+    results = []
+    for item in data.get("items", []):
+        snippet = item.get("snippet", {})
+        vid_id = (item.get("id") or {}).get("videoId")
+        thumb = _best_thumb(snippet)
+        if not vid_id or not thumb:
+            continue
+        results.append({
+            "id": vid_id,
+            "title": snippet.get("title", ""),
+            "description": snippet.get("description", "")[:250],
+            "channelTitle": snippet.get("channelTitle", ""),
+            "publishedAt": snippet.get("publishedAt", ""),
+            "thumbnail": thumb,
+        })
+    return results
+
+
+def get_video_details(video_ids: list) -> list:
+    """Fetches rich details (duration, statistics, views) for a list of video IDs (max 50)."""
+    if not video_ids:
+        return []
+    cleaned_ids = [vid.strip() for vid in video_ids if vid and isinstance(vid, str) and vid.strip()][:50]
+    if not cleaned_ids:
+        return []
+    params = {
+        "part": "snippet,contentDetails,statistics",
+        "id": ",".join(cleaned_ids),
+    }
+    data = _get("videos", params)
+    details = []
+    for item in data.get("items", []):
+        snippet = item.get("snippet", {})
+        content = item.get("contentDetails", {})
+        stats = item.get("statistics", {})
+        dur_s = parse_iso_duration(content.get("duration", ""))
+        thumb = _best_thumb(snippet)
+        details.append({
+            "id": item["id"],
+            "title": snippet.get("title", ""),
+            "channelTitle": snippet.get("channelTitle", ""),
+            "description": snippet.get("description", "")[:300],
+            "publishedAt": snippet.get("publishedAt", ""),
+            "duration_s": dur_s,
+            "duration_formatted": f"{dur_s // 60}m {dur_s % 60}s" if dur_s < 3600 else f"{dur_s // 3600}h {(dur_s % 3600) // 60}m",
+            "viewCount": int(stats.get("viewCount", 0)),
+            "likeCount": int(stats.get("likeCount", 0)),
+            "thumbnail": thumb,
+            "is_short": dur_s <= 60,
+        })
+    return details
+

@@ -1,107 +1,82 @@
-# TechX — Next Agent Handoff Lead
+# TechX — Project Status & Lead for Next Phase (Phase 3)
 
-> **Quick Context for Incoming Agent:**
-> TechX is a tech learning platform curating YouTube content.
-> Read `note.local` before doing anything:
-> 1. TechX is essentially a tech learning platform that curates YouTube videos — new features enhance it, never replace it.
+> **Quick Context & Core Principles (`note.local`):**
+> 1. TechX is essentially a tech learning platform curating YouTube content — new features enhance it, never replace it.
 > 2. Manual curation must NOT be removed.
-> 3. Only Admins can curate (manual and AI). AI drafts must be reviewed by Admin before publishing.
-> 4. Keep existing data intact.
+> 3. Only Admins can curate (both manual and AI).
+> 4. AI drafts must be reviewed by Admin before publishing.
+> 5. Keep existing data intact.
 
 ---
 
-## 1. Current Branch & Workspace State
+## 1. Current Deployed State
 
-* **Active Git Branch:** `restructure/core-platform`
+* **Active Git Branch:** `restructure/core-platform` (clean, all committed).
+* **Live Endpoints:**
+  * **Frontend:** `http://techx-hosting-bucket.s3-website-us-east-1.amazonaws.com`
+  * **API Gateway:** `https://c54htww8j8.execute-api.us-east-1.amazonaws.com`
+  * **Cognito User Pool ID:** `us-east-1_Ei6OwcKPR`
+  * **Cognito Client ID:** `67tnfepeir9j7b63qpvrj7sv8b`
 * **Python Test Suite:** All 20 tests pass:
   ```bash
   PYTHONDONTWRITEBYTECODE=1 /Users/barb/.gemini/antigravity-ide/brain/04b7cf06-a037-4dbc-87ca-e3d7906a8ed2/scratch/venv/bin/pytest module/platform/tests -q -p no:cacheprovider
   ```
-* **Git Status:**
-  * **Modified files (Phase 2 backend completed):**
-    * `main.tf` — added descriptions Lambda variables & API routes (`GET /courses/{id}/descriptions`, `GET /videos/{id}/descriptions`, `POST /admin/descriptions`).
-    * `module/lambda/main.tf` — added ffmpeg layer to `audio_downloader`, retry configs (0 retries on 15m Lambdas).
-    * `module/lambda/src/audio_downloader.py` — runs `python -m yt_dlp`, uses `/opt/bin/ffmpeg` for MP3 extraction, handles async direct invocation, writes `AUDIO_FAILED` to DynamoDB on error.
-    * `module/lambda/src/pause_map_builder.py` — added `select_windows()` to pick top 30 pauses spaced $\ge$ 20s apart (WCAG & cost control).
-    * `module/lambda/src/frame_extractor.py` — caps yt-dlp to 720p, converts floats to `Decimal` before DynamoDB write, writes index before status change.
-    * `module/lambda/src/gemini_describer.py` — upgraded to `gemini-2.5-flash`, saves `pause_start_s`, avoids re-raising errors to prevent DynamoDB stream blocking.
-    * `module/platform/main.tf` — defined `techx-descriptions` role & Lambda.
-    * `module/platform/variable.tf` & `output.tf` — exposed `media_bucket_name`, `media_bucket_arn`, `audio_downloader_arn`, and `descriptions` Lambda.
-  * **Untracked files:**
-    * `module/platform/src/descriptions.py` — HTTP API handler for AD status, cues with fresh presigned URLs, and admin queueing.
-    * `module/platform/tests/test_descriptions.py` — 6 tests covering all AD endpoints & pause selection.
 
 ---
 
-## 2. Immediate Next Steps (Phase 2 Frontend)
+## 2. Completed Phases
 
-### Step 1: Update `frontend/src/CoursePlayer.jsx`
-1. **Audio Descriptions (AD) Toggle:**
-   * Add a state `adEnabled` initialized from `localStorage.getItem('techx_ad_enabled') === 'true'`.
-   * Add a toggle switch / button in the player control bar: `"Audio Descriptions: ON / OFF"`.
-2. **Fetch Descriptions for Active Video:**
-   * When `activeVideo` changes, call `GET /videos/${activeVideo.YouTubeID}/descriptions` via `apiFetch`.
-   * If `status === 'DESCRIPTIONS_READY'`, store `descriptions` (array of `{ start, text, audioUrl, frameType, topic }`).
-3. **Playback Synchronization (Extended Audio Description — WCAG 1.2.7):**
-   * Keep a reference to the active `Audio` object and a `Set` of played cue timestamps for the current video session.
-   * Inside the 1-second interval (`timerRef`):
-     * Check `player.getCurrentTime()`.
-     * Find unplayed cue where `currentTime >= cue.start && currentTime < cue.start + 2.5`.
-     * If found and `adEnabled` is true:
-       1. Mark cue as played in the session set.
-       2. Pause YouTube player: `player.pauseVideo()`.
-       3. Show active description text in an ARIA live region / banner.
-       4. Play audio clip: `const audio = new Audio(cue.audioUrl); audio.play();`.
-       5. On `audio.onended = () => { setActiveDesc(null); player.playVideo(); }`.
-       6. On `audio.onerror = () => { setActiveDesc(null); player.playVideo(); }`.
-4. **Sidebar "AD" Badge:**
-   * Fetch course-level AD status via `GET /courses/${courseId}/descriptions`.
-   * For lessons where `videos[ytId]?.status === 'DESCRIPTIONS_READY'`, render an `<span className="badge badge-gold">AD</span>` tag next to the title.
+### Phase 1 — Core Platform Restored & Modularized ✅
+* Restored catalog (`GET /courses`), course detail (`GET /courses/{id}`), and learner interactions (`GET|POST /user`: enroll, progress, bookmarks, notes).
+* Admin manual curation (`POST /admin/ingest`) imports playlists into the catalog.
+* Cognito JWT authorizer protects platform and admin routes; identity is extracted server-side from claims.
 
-### Step 2: Update `frontend/src/Admin.jsx`
-1. Add an **"Audio Descriptions"** section or tabs (Tab 1: "Manual Import", Tab 2: "Audio Descriptions").
-2. In the AD section:
-   * Fetch existing courses via `GET /courses`.
-   * Dropdown to select a course.
-   * Shows table of videos with their AD status (`DESCRIPTIONS_READY`, `QUEUED`, `TRANSCRIBING`, `NONE`, or `ERROR`).
-   * Button **"Generate Audio Descriptions"** (calls `POST /admin/descriptions` with `{ courseId }`).
-   * Displays modal / alert confirming how many videos will be queued (max 10 per request).
-
-### Step 3: Infra Validation & Deployment
-1. Run `terraform validate` and `terraform plan`.
-2. Apply changes (`terraform apply -auto-approve`).
-3. Build frontend:
-   ```bash
-   cd frontend && npm run build
-   ```
-4. Sync build output to S3:
-   ```bash
-   aws s3 sync dist/ s3://techx-hosting-bucket --delete
-   ```
+### Phase 2 — Audio Descriptions Enhancement ✅
+* **Backend Pipeline:**
+  * `audio_downloader`: yt-dlp audio download + ffmpeg MP3 conversion + AWS Transcribe start.
+  * `pause_map_builder`: parses Transcribe JSON, selects top 30 pauses spaced $\ge 20$s apart.
+  * `frame_extractor`: downloads 720p video, extracts JPEG frames at pauses with ffmpeg.
+  * `gemini_describer`: Gemini 2.5 Flash classifies frames, filters low-info screens, generates descriptions, and synthesizes audio with Amazon Polly Neural TTS.
+* **Descriptions API Bridge (`techx-descriptions` Lambda):**
+  * `POST /admin/descriptions`: Admin queues course videos (capped at 10 per batch, skips ready/in-progress).
+  * `GET /courses/{id}/descriptions`: Returns per-video status map for sidebar badges.
+  * `GET /videos/{id}/descriptions`: Returns cues with fresh presigned Polly audio URLs (re-signed on read).
+* **Frontend:**
+  * `CoursePlayer.jsx`: Audio Descriptions ON/OFF toggle, auto-pause video $\rightarrow$ play Polly narration $\rightarrow$ resume video upon reaching timestamps, visual caption overlay with "Skip", screen-reader announcement (`aria-live`), and "AD" badges in the course content sidebar.
+  * `Admin.jsx`: Tabbed navigation (Tab 1: "Manual Import", Tab 2: "Audio Descriptions" via `AdminDescriptions.jsx` for viewing processing states and queuing batches).
+* **Infrastructure:**
+  * All Terraform applied and frontend synced to S3 hosting bucket.
 
 ---
 
-## 3. Subsequent Phase (Phase 3: AI Curator)
+## 3. Next Phase: Phase 3 — AI Curator
 
-* **Architecture:**
-  * Create `module/platform/src/curator.py` Lambda.
-  * Connect to Gemini 2.5 Flash with function calling (`search_youtube`, `get_video_details`, `get_playlist_items`).
-  * Admin inputs a prompt $\rightarrow$ agent drafts a course $\rightarrow$ writes to `CURATION#<id>` in DynamoDB as `DRAFT`.
-  * Admin UI in `Admin.jsx` (Tab 3: "AI Curator"):
-    * Input prompt + optional constraints.
-    * Review draft: reorder, remove, or edit lessons.
-    * Click "Publish" $\rightarrow$ uses shared [`course_writer.py`](file:///Users/barb/Documents/My%20Projects/techx/module/platform/src/course_writer.py) to write standard `COURSE#` and `VIDEO#` records.
+### Goal
+Allow admins to provide a natural language prompt/brief (e.g., *"Modern TypeScript and React patterns for senior developers"*), and have an AI agent search YouTube, curate the best video sequence, explain its choices, and present a structured draft in the Admin panel for review, reordering, and publishing.
 
----
+### Key Requirements
+1. **Admin Only:** Only users in the Cognito `Admin` group can trigger the AI Curator or view/publish drafts.
+2. **Review Before Publish:** AI creates a `DRAFT` in DynamoDB (`CURATION#<id>`). It is NEVER auto-published directly into the course catalog.
+3. **Shared Publishing Engine:** When the Admin approves/edits the draft and clicks "Publish", it calls the shared `course_writer.py` to create standard `COURSE#` and `VIDEO#` records identical to manual curation, setting `Source: "AI_CURATOR"`.
+4. **Agent Tools:**
+   * Gemini 2.5 Flash function calling with tools:
+     * `search_youtube(query, max_results)`
+     * `get_video_details(video_ids)` (duration, view count, channel, publish date, captions)
+     * `get_playlist_items(playlist_id)` (option to adopt/curate an existing high-quality playlist)
 
-## 4. Key Endpoints Reference
+### Step-by-Step Implementation Roadmap for Phase 3
 
-| Route | Method | Auth | Description |
-|---|---|---|---|
-| `/courses` | GET | Cognito JWT | Catalog scan (Type=COURSE) |
-| `/courses/{id}` | GET | Cognito JWT | Course details + lessons |
-| `/courses/{id}/descriptions` | GET | Cognito JWT | Per-video AD status map |
-| `/videos/{id}/descriptions` | GET | Cognito JWT | Cues + fresh presigned Polly URLs |
-| `/admin/ingest` | POST | Admin JWT | Manual playlist import |
-| `/admin/descriptions` | POST | Admin JWT | Queue AD pipeline for course |
-| `/user` | GET / POST | Cognito JWT | Enrollment, progress, bookmarks, notes |
+1. **Curator Agent Lambda (`module/platform/src/curator.py`):**
+   * Expose routes:
+     * `POST /admin/curations`: starts job (async or step), returns `{ curationId }`.
+     * `GET /admin/curations`: list curation drafts.
+     * `GET /admin/curations/{id}`: get draft details, lessons, and agent reasoning.
+     * `POST /admin/curations/{id}/publish`: takes edited/reordered lessons and writes to catalog via `course_writer.py`.
+2. **Terraform Integration:**
+   * Wire the curation routes in `module/platform/main.tf` and `main.tf`.
+   * Add permissions for DynamoDB and SSM (YouTube API key & Gemini API key).
+3. **Admin UI (`frontend/src/AdminCurator.jsx` & Tab 3 in `Admin.jsx`):**
+   * Prompt form: Topic brief, difficulty level, target duration, max lessons.
+   * Draft review board: Video cards showing thumbnail, title, duration, agent reasoning, delete button, drag/move order.
+   * Edit course title/description before publishing.
+   * "Publish to Catalog" action with confirmation.

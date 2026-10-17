@@ -180,3 +180,69 @@ resource "aws_lambda_function" "descriptions" {
     }
   }
 }
+
+# ── AI Curator (Gemini 2.5 Flash agent with YouTube function calling) ────────
+
+resource "aws_iam_role" "curator" {
+  name               = "techx-curator-role"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
+  tags               = { Purpose = "AI-Curator-Agent" }
+}
+
+resource "aws_iam_role_policy" "curator" {
+  name = "techx-curator-policy"
+  role = aws_iam_role.curator.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:Query", "dynamodb:Scan", "dynamodb:GetItem",
+          "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem",
+          "dynamodb:BatchWriteItem"
+        ]
+        Resource = var.table_arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["ssm:GetParameter"]
+        Resource = [var.youtube_ssm_arn, var.gemini_ssm_arn]
+      },
+      {
+        # Allow async self-invocation for background curation jobs
+        Effect   = "Allow"
+        Action   = ["lambda:InvokeFunction"]
+        Resource = "arn:aws:lambda:*:*:function:techx-curator"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "arn:aws:logs:*:*:*"
+      }
+    ]
+  })
+}
+
+resource "aws_lambda_function" "curator" {
+  function_name    = "techx-curator"
+  role             = aws_iam_role.curator.arn
+  handler          = "curator.lambda_handler"
+  runtime          = "python3.11"
+  filename         = data.archive_file.platform_src.output_path
+  source_code_hash = data.archive_file.platform_src.output_base64sha256
+  timeout          = 180 # 3 min for autonomous multi-turn search & reasoning
+  memory_size      = 512
+
+  tags = { Purpose = "AI-Curator-Autonomous-Agent" }
+
+  environment {
+    variables = {
+      TABLE_NAME          = var.table_name
+      YOUTUBE_SSM_PATH    = var.youtube_ssm_name
+      GEMINI_SSM_PATH     = var.gemini_ssm_name
+      GEMINI_MODEL        = "gemini-2.5-flash"
+      CURATOR_LAMBDA_NAME = "techx-curator"
+    }
+  }
+}
