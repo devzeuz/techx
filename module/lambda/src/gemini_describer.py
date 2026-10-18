@@ -30,7 +30,7 @@ ssm      = boto3.client('ssm')
 dynamodb = boto3.resource('dynamodb')
 table    = dynamodb.Table(os.environ['TABLE_NAME'])
 BUCKET   = os.environ['MEDIA_BUCKET']
-MODEL    = os.environ.get('GEMINI_MODEL', 'gemini-2.5-flash')  # 1.5-flash is retired
+MODEL    = os.environ.get('GEMINI_MODEL', 'gemini-3.8-flash')  # Updated to gemini-3.8-flash
 
 # ─── Gemini Agent: Function Definitions ──────────────────────────────────────
 # These tools force Gemini to make STRUCTURED DECISIONS — not just free-form text.

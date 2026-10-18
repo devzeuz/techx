@@ -241,7 +241,7 @@ resource "aws_lambda_function" "curator" {
       TABLE_NAME          = var.table_name
       YOUTUBE_SSM_PATH    = var.youtube_ssm_name
       GEMINI_SSM_PATH     = var.gemini_ssm_name
-      GEMINI_MODEL        = "gemini-2.5-flash"
+      GEMINI_MODEL        = "gemini-3.8-flash"
       CURATOR_LAMBDA_NAME = "techx-curator"
     }
   }

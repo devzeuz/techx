@@ -25,7 +25,7 @@
 ### 1. Gemini is Not Yet Called — Phase 2 is Incomplete
 **Requirement:** Core business workflow must natively use Gemini API.
 **Gap:** Right now, the pipeline stops at frame extraction. Gemini Vision is SSM-configured but never invoked.
-**Fix:** Complete Phase 2 — `techx-gemini-describer` Lambda that calls `gemini-2.5-flash` with each frame image and generates a scene description.
+**Fix:** Complete Phase 2 — `techx-gemini-describer` Lambda that calls `gemini-3.8-flash` with each frame image and generates a scene description.
 
 ---
 

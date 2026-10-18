@@ -35,7 +35,7 @@ from youtube import fetch_playlist_items, get_video_details, search_videos
 
 TABLE_NAME = os.environ["TABLE_NAME"]
 GEMINI_SSM_PATH = os.environ.get("GEMINI_SSM_PATH", "gemini_api_key")
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
 CURATOR_LAMBDA_NAME = os.environ.get("CURATOR_LAMBDA_NAME", "techx-curator")
 
 table = boto3.resource("dynamodb").Table(TABLE_NAME)

@@ -222,6 +222,7 @@ resource "aws_lambda_function" "gemini_describer" {
       TABLE_NAME      = var.table_name
       MEDIA_BUCKET    = var.media_bucket
       GEMINI_SSM_PATH = var.gemini_ssm_name
+      GEMINI_MODEL    = "gemini-3.8-flash"
     }
   }
 }

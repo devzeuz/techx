@@ -75,3 +75,12 @@
 | `/admin/curations/{id}` | GET | Admin | Get specific draft details and lesson list |
 | `/admin/curations/{id}` | DELETE | Admin | Delete a curation draft |
 | `/admin/curations/{id}/publish` | POST | Admin | Review, approve, and publish draft to course catalog |
+
+---
+
+## 7. Model Version & AI Services
+- **Gemini Model:** `gemini-3.8-flash` (Upgraded from `gemini-2.5-flash` following Google deprecation).
+- **Environment Variables:** `GEMINI_MODEL = "gemini-3.8-flash"` configured across `techx-curator` and `techx-gemini-describer`.
+- **SSM Parameters:**
+  - `gemini_api_key` (Google AI Studio Key)
+  - `youtube_api_key` (YouTube Data API v3 Key)
