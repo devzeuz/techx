@@ -17,7 +17,7 @@
 * **Cognito User Pool ID:** `us-east-1_Ei6OwcKPR`
 * **Cognito Client ID:** `67tnfepeir9j7b63qpvrj7sv8b`
 * **DynamoDB Main Table:** `techx-tf-main-table`
-* **Test Suite:** All 26 tests passing (`pytest module/platform/tests`)
+* **Test Suite:** All 35 tests passing (`pytest module/platform/tests`)
 
 ---
 
@@ -55,7 +55,17 @@
     * Interactive review board: edit course title/description, reorder lessons, remove lessons, add custom YouTube videos, inspect agent reasoning.
     * "Publish to Catalog" action calls the shared `course_writer.py` to write standard `COURSE#` and `VIDEO#` records with `Source: AI_CURATOR`.
     * Duplicate title conflict detection with overwrite confirmation.
-    * Curation history list to resume or manage drafts.
+### Phase 4 — AI Interactive Tutor / RAG Q&A ✅
+* **Grounded Q&A Engine (`tutor.py`):**
+  * Two-tier architecture: One-time background pass extracts structured, timestamped lesson notes and on-screen code into DynamoDB (`VIDEO#<ytId> | TUTOR_CONTEXT`).
+  * Live questions answer in ~2–4 seconds by prompting over cached notes plus nearby Phase 2 audio-description cues (`DESCRIPTION#<ts>`).
+  * Multi-model resilience: Primary `gemini-3.8-flash` with automatic failover to `gemini-3-flash-preview` if Google returns 503/429.
+  * Course security guard: Only allows questions for videos that belong to the specified enrolled course.
+* **Learner UI (`CoursePlayer.jsx` & `TutorPanel.jsx`):**
+  * "Ask AI Tutor" button in player control bar; automatically pauses video on open to prevent audio conflict.
+  * Quick prompt chips (*"What's on screen right now?"*, *"Explain what was just taught"*, *"Summarize this lesson"*, *"Read the code shown aloud"*).
+  * Timestamps like `[04:12]` in answers render as clickable seek buttons.
+  * Accessibility: Screen reader announcements (`aria-live="polite"`), mobile bottom sheet, theme-aware CSS.
 
 ---
 
@@ -68,6 +78,8 @@
 | `/user` | GET / POST | Learner | Enrollments, progress, bookmarks, and notes |
 | `/courses/{id}/descriptions` | GET | Learner | Per-lesson audio description availability map |
 | `/videos/{id}/descriptions` | GET | Learner | Cue timestamps and fresh presigned audio URLs |
+| `/videos/{id}/tutor` | GET | Learner | AI Tutor lesson preparation status (`READY`, `PREPARING`, `FAILED`) |
+| `/videos/{id}/ask` | POST | Learner | Grounded AI Tutor Q&A with conversational history and timestamp context |
 | `/admin/ingest` | POST | Admin | Manual YouTube playlist ingestion |
 | `/admin/descriptions` | POST | Admin | Batch queue audio description generation |
 | `/admin/curations` | POST | Admin | Start new AI Curator agent job |
@@ -78,9 +90,13 @@
 
 ---
 
-## 7. Model Version & AI Services
-- **Gemini Model:** `gemini-3.8-flash` (Upgraded from `gemini-2.5-flash` following Google deprecation).
-- **Environment Variables:** `GEMINI_MODEL = "gemini-3.8-flash"` configured across `techx-curator` and `techx-gemini-describer`.
+## 4. Model Version & AI Services
+- **Gemini Primary:** `gemini-3.8-flash`
+- **Gemini Fallback:** `gemini-3-flash-preview` (automatic failover for traffic spikes / 503)
+- **Environment Variables:**
+  - `GEMINI_MODEL = "gemini-3.8-flash"`
+  - `GEMINI_FALLBACK_MODELS = "gemini-3-flash-preview"`
 - **SSM Parameters:**
   - `gemini_api_key` (Google AI Studio Key)
   - `youtube_api_key` (YouTube Data API v3 Key)
+

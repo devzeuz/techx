@@ -246,3 +246,65 @@ resource "aws_lambda_function" "curator" {
     }
   }
 }
+
+# ── AI Tutor (Phase 4: grounded Q&A in the course player) ────────────────────
+
+resource "aws_iam_role" "tutor" {
+  name               = "techx-tutor-role"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
+  tags               = { Purpose = "AI-Tutor" }
+}
+
+resource "aws_iam_role_policy" "tutor" {
+  name = "techx-tutor-policy"
+  role = aws_iam_role.tutor.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:Query", "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem"]
+        Resource = var.table_arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["ssm:GetParameter"]
+        Resource = [var.gemini_ssm_arn]
+      },
+      {
+        # Async self-invocation to build a lesson's context in the background
+        Effect   = "Allow"
+        Action   = ["lambda:InvokeFunction"]
+        Resource = "arn:aws:lambda:*:*:function:techx-tutor"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "arn:aws:logs:*:*:*"
+      }
+    ]
+  })
+}
+
+resource "aws_lambda_function" "tutor" {
+  function_name    = "techx-tutor"
+  role             = aws_iam_role.tutor.arn
+  handler          = "tutor.lambda_handler"
+  runtime          = "python3.11"
+  filename         = data.archive_file.platform_src.output_path
+  source_code_hash = data.archive_file.platform_src.output_base64sha256
+  timeout          = 300 # one-time video context build takes ~100 s; Q&A itself is capped at 20 s
+  memory_size      = 256
+
+  tags = { Purpose = "AI-Tutor-Grounded-QA" }
+
+  environment {
+    variables = {
+      TABLE_NAME        = var.table_name
+      GEMINI_SSM_PATH   = var.gemini_ssm_name
+      GEMINI_MODEL           = "gemini-3.8-flash"
+      GEMINI_FALLBACK_MODELS = "gemini-3-flash-preview"
+      TUTOR_LAMBDA_NAME      = "techx-tutor"
+    }
+  }
+}

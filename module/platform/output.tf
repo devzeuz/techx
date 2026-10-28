@@ -17,5 +17,9 @@ output "lambdas" {
       invoke_arn    = aws_lambda_function.curator.invoke_arn
       function_name = aws_lambda_function.curator.function_name
     }
+    tutor = {
+      invoke_arn    = aws_lambda_function.tutor.invoke_arn
+      function_name = aws_lambda_function.tutor.function_name
+    }
   }
 }

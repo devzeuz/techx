@@ -2,9 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiRequest } from './Api';
 import YouTube from 'react-youtube';
-import { CheckCircle, Play, Save, RotateCcw, Volume2, VolumeX } from 'lucide-react';
+import { CheckCircle, Play, Save, RotateCcw, Volume2, VolumeX, Bot } from 'lucide-react';
 import SkeletonLoader from './components/SkeletonLoader';
 import Spinner from './components/Spinner';
+import TutorPanel from './TutorPanel';
 
 const AD_STORAGE_KEY = 'techx_ad_enabled';
 const AD_READY = 'DESCRIPTIONS_READY';
@@ -36,6 +37,9 @@ const CoursePlayer = ({ user }) => {
   const [adStatus,   setAdStatus]   = useState({});   // { [ytId]: {status, count} }
   const [cues,       setCues]       = useState([]);
   const [activeDesc, setActiveDesc] = useState(null); // text currently being narrated
+
+  // AI Tutor (Phase 4)
+  const [tutorOpen,  setTutorOpen]  = useState(false);
 
   const timerRef      = useRef(null);
   const cuesRef       = useRef([]);
@@ -225,6 +229,17 @@ const CoursePlayer = ({ user }) => {
     player.playVideo();
   };
 
+  // Pause the lesson while the learner talks to the tutor (avoids audio overlap for screen-reader users)
+  const openTutor = () => {
+    const next = !tutorOpen;
+    setTutorOpen(next);
+    if (next && player && isPlaying) {
+      stopDescription(false);
+      setOverlayReason(null);
+      player.pauseVideo();
+    }
+  };
+
   const handleReplay = () => {
     if (!player) return;
     setOverlayReason(null);
@@ -371,6 +386,16 @@ const CoursePlayer = ({ user }) => {
                 Audio Descriptions: {adEnabled ? 'ON' : 'OFF'}
               </button>
               <button
+                id="tutor-toggle"
+                type="button"
+                onClick={openTutor}
+                aria-expanded={tutorOpen}
+                className={`btn ${tutorOpen ? 'btn-primary' : 'btn-ghost'}`}
+                style={{ padding: '10px 16px' }}
+              >
+                <Bot size={16} /> Ask AI Tutor
+              </button>
+              <button
                 onClick={() => markAsWatched(activeVideo)}
                 className={`btn ${watched.has(activeVideo.YouTubeID) ? 'btn-success' : 'btn-ghost'}`}
                 style={{ padding: '10px 16px' }}
@@ -502,6 +527,15 @@ const CoursePlayer = ({ user }) => {
         })}
       </div>
 
+      <TutorPanel
+        key={activeVideo.YouTubeID}
+        open={tutorOpen}
+        onClose={() => setTutorOpen(false)}
+        courseId={courseId}
+        video={activeVideo}
+        getCurrentTime={() => { try { return player?.getCurrentTime() ?? 0; } catch { return 0; } }}
+        onSeek={(s) => { if (player) { player.seekTo(s, true); player.playVideo(); } }}
+      />
     </div>
   );
 };

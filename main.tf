@@ -73,6 +73,9 @@ module "api" {
     # Learners: audio descriptions (enhancement)
     "GET /courses/{id}/descriptions" = "descriptions"
     "GET /videos/{id}/descriptions"  = "descriptions"
+    # Learners: AI Tutor (Phase 4)
+    "GET /videos/{id}/tutor" = "tutor"
+    "POST /videos/{id}/ask"  = "tutor"
     # Admins only (enforced in Lambda): manual curation
     "POST /admin/ingest" = "course_ingestor"
     # Admins only (enforced in Lambda): queue audio-description generation
