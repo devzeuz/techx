@@ -11,8 +11,9 @@ Actions :
   4. Write TRANSCRIBING status to DynamoDB
 
 Notes:
-  * yt-dlp is run as `python -m yt_dlp` — the layer's console script lives in
-    /opt/python/bin, which is not on Lambda's PATH.
+  * yt-dlp is imported in-process (the layer is on sys.path). Lambda does NOT
+    export PYTHONPATH, so a `python -m yt_dlp` child process cannot see the
+    layer; the subprocess fallback therefore passes PYTHONPATH explicitly.
   * mp3 extraction needs ffmpeg (techx-ffmpeg layer → /opt/bin/ffmpeg).
   * Any failure is written to DynamoDB (AUDIO_FAILED) so admins can see it.
 """
@@ -31,6 +32,51 @@ dynamodb    = boto3.resource('dynamodb')
 table       = dynamodb.Table(os.environ['TABLE_NAME'])
 BUCKET      = os.environ['MEDIA_BUCKET']
 FFMPEG      = os.environ.get('FFMPEG_PATH', '/opt/bin/ffmpeg')
+LAYER_PY    = os.environ.get('PYTHONPATH', '/opt/python')
+
+
+def download_audio(video_url: str, tmpdir: str) -> tuple[str | None, str]:
+    """Download audio as mp3. Returns (path or None, error text)."""
+    out_tmpl = os.path.join(tmpdir, 'raw_audio.%(ext)s')
+    audio_path = os.path.join(tmpdir, 'raw_audio.mp3')
+    try:
+        import yt_dlp
+        print(f"[yt-dlp] loaded version: {getattr(yt_dlp, '__version__', 'unknown')}, file: {getattr(yt_dlp, '__file__', 'unknown')}")
+        opts = {
+            'format': 'bestaudio/best',
+            'extractor_args': {'youtube': {'player_client': ['android']}},
+            'postprocessors': [{'key': 'FFmpegExtractAudio',
+                                'preferredcodec': 'mp3', 'preferredquality': '5'}],
+            'ffmpeg_location': FFMPEG,
+            'outtmpl': out_tmpl,
+            'noplaylist': True,
+            'quiet': True,
+            'no_warnings': True,
+            'cachedir': False,  # $HOME is read-only on Lambda
+        }
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            ydl.download([video_url])
+        if os.path.exists(audio_path):
+            return audio_path, ''
+        err = 'yt-dlp finished but no mp3 was produced'
+    except ImportError as e:
+        err = f'yt_dlp import failed: {e}'
+    except Exception as e:  # noqa: BLE001 — yt_dlp raises DownloadError etc.
+        return None, f'yt-dlp: {e}'
+
+    # Fallback: subprocess with the layer path exported explicitly
+    print(f"[yt-dlp] native path failed ({err}); trying subprocess")
+    env = {**os.environ, 'PYTHONPATH': LAYER_PY}
+    result = subprocess.run(
+        [sys.executable, '-m', 'yt_dlp', '--extract-audio', '--audio-format', 'mp3',
+         '--audio-quality', '5', '--ffmpeg-location', FFMPEG, '--no-playlist',
+         '--extractor-args', 'youtube:player_client=android',
+         '--no-warnings', '--no-cache-dir', '-o', out_tmpl, video_url],
+        capture_output=True, text=True, timeout=840, env=env,
+    )
+    if result.returncode == 0 and os.path.exists(audio_path):
+        return audio_path, ''
+    return None, f"yt-dlp: {result.stderr[-500:]}"
 
 
 def _parse(event) -> dict:
@@ -74,26 +120,11 @@ def lambda_handler(event, context):
 
         # ── Step 1: Download audio via yt-dlp ────────────────────────────
         with tempfile.TemporaryDirectory() as tmpdir:
-            result = subprocess.run(
-                [
-                    sys.executable, '-m', 'yt_dlp',
-                    '--extract-audio',
-                    '--audio-format', 'mp3',
-                    '--audio-quality', '5',      # speech only — smaller, faster
-                    '--ffmpeg-location', FFMPEG,
-                    '--no-playlist',
-                    '--no-warnings',
-                    '--no-cache-dir',            # $HOME is read-only on Lambda
-                    '-o', os.path.join(tmpdir, 'raw_audio.%(ext)s'),
-                    video_url,
-                ],
-                capture_output=True, text=True, timeout=840  # 14 min — within 15 min Lambda max
-            )
-            audio_path = os.path.join(tmpdir, 'raw_audio.mp3')
-            if result.returncode != 0 or not os.path.exists(audio_path):
-                print(f"[yt-dlp stderr] {result.stderr}")
-                _set_status(video_id, 'AUDIO_FAILED', f"yt-dlp: {result.stderr[-500:]}")
-                return _resp(500, {'error': 'Audio download failed', 'detail': result.stderr[-500:]})
+            audio_path, err = download_audio(video_url, tmpdir)
+            if not audio_path:
+                print(f"[yt-dlp error] {err}")
+                _set_status(video_id, 'AUDIO_FAILED', err[:1000])
+                return _resp(500, {'error': 'Audio download failed', 'detail': err[-500:]})
 
             # ── Step 2: Upload to S3 ──────────────────────────────────────
             s3_audio_key = f"audio/{video_id}/raw_audio.mp3"

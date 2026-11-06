@@ -19,6 +19,7 @@ import os
 import io
 import json
 import base64
+import time
 import boto3
 import google.generativeai as genai
 from botocore.exceptions import ClientError
@@ -31,6 +32,9 @@ dynamodb = boto3.resource('dynamodb')
 table    = dynamodb.Table(os.environ['TABLE_NAME'])
 BUCKET   = os.environ['MEDIA_BUCKET']
 MODEL    = os.environ.get('GEMINI_MODEL', 'gemini-3.8-flash')  # Updated to gemini-3.8-flash
+FALLBACK_MODELS = [m.strip() for m in os.environ.get(
+    'GEMINI_FALLBACK_MODELS', 'gemini-3-flash-preview').split(',') if m.strip()]
+FRAME_PACING_S = 1.2   # keep bursts under Gemini RPM limits
 
 # ─── Gemini Agent: Function Definitions ──────────────────────────────────────
 # These tools force Gemini to make STRUCTURED DECISIONS — not just free-form text.
@@ -96,6 +100,25 @@ DESCRIPTION_PROMPTS = {
 def get_gemini_key() -> str:
     param = ssm.get_parameter(Name=os.environ['GEMINI_SSM_PATH'], WithDecryption=True)
     return param['Parameter']['Value']
+
+
+def analyze_with_fallback(image_data: bytes) -> dict | None:
+    """Run the frame agent on the primary model, then fallbacks, with backoff."""
+    global MODEL
+    primary, last_err = MODEL, None
+    try:
+        for model in [primary] + [m for m in FALLBACK_MODELS if m != primary]:
+            MODEL = model
+            for attempt in range(2):
+                try:
+                    return agent_analyze_frame(model=None, image_data=image_data)
+                except Exception as e:  # noqa: BLE001 — 429/503/etc. from the SDK
+                    last_err = e
+                    print(f"  Gemini [{model}] attempt {attempt + 1} failed: {e}")
+                    time.sleep(3 * (attempt + 1))
+    finally:
+        MODEL = primary
+    raise RuntimeError(f"All Gemini models failed: {last_err}")
 
 
 def agent_analyze_frame(model, image_data: bytes, mime_type: str = 'image/jpeg') -> dict | None:
@@ -265,6 +288,7 @@ def process_video(video_id: str) -> dict:
 
     descriptions = []
     total_skipped = 0
+    frame_errors = []
 
     for i, frame in enumerate(frame_index):
         frame_key = frame['frame_key']
@@ -283,23 +307,26 @@ def process_video(video_id: str) -> dict:
             total_skipped += 1
             continue
 
-        # ── Run Gemini agent ────────────────────────────────────────────────
-        result = agent_analyze_frame(
-            model=None,  # model is created inside agent_analyze_frame
-            image_data=image_data
-        )
+        # ── Run Gemini agent (paced, with fallback) ──────────────────
+        if i:
+            time.sleep(FRAME_PACING_S)
+        try:
+            result = analyze_with_fallback(image_data)
+            if result is None:
+                total_skipped += 1
+                continue
 
-        if result is None:
+            description_text = result['description']
+            estimated_dur    = min(result['estimated_duration_seconds'], max_audio_duration)
+            print(f"  Description: {description_text[:80]}...")
+
+            # ── Synthesize with Polly ───────────────────────────
+            audio_bytes = synthesize_audio(description_text)
+        except Exception as e:  # noqa: BLE001 — one bad frame must not fail the video
+            print(f"  Frame failed, skipping: {e}")
+            frame_errors.append(str(e)[:200])
             total_skipped += 1
             continue
-
-        description_text = result['description']
-        estimated_dur    = min(result['estimated_duration_seconds'], max_audio_duration)
-
-        print(f"  Description: {description_text[:80]}...")
-
-        # ── Synthesize with Polly ───────────────────────────────────────────
-        audio_bytes = synthesize_audio(description_text)
 
         ts_label = f"{timestamp:07.3f}".replace('.', '_')
         audio_key = f"audio-descriptions/{video_id}/desc_{ts_label}.mp3"
@@ -344,6 +371,10 @@ def process_video(video_id: str) -> dict:
             'audio_key':      audio_key,
             'audio_url':      audio_url,
         })
+
+    # If every frame errored (not merely skipped as low-info), surface the failure
+    if frame_index and not descriptions and frame_errors:
+        raise RuntimeError(f"All frames failed: {frame_errors[-1]}")
 
     # Update metadata record
     table.update_item(

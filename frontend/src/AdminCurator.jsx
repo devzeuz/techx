@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { apiFetch, apiRequest } from './Api';
 import {
-  Sparkles,
-  Bot,
+  SlidersHorizontal,
+  BookOpen,
   MoveUp,
   MoveDown,
   Trash2,
@@ -13,9 +13,7 @@ import {
   AlertCircle,
   RefreshCw,
   Clock,
-  BookOpen,
   ArrowRight,
-  ShieldAlert,
 } from 'lucide-react';
 import Spinner from './components/Spinner';
 
@@ -75,6 +73,8 @@ const AdminCurator = () => {
       isMounted = false;
     };
   }, []);
+
+  const [retrying, setRetrying] = useState(false);
 
   /* ── Fetch Curation Detail & Setup Review ───────── */
   const loadCurationDetail = async (id, isPolling = false) => {
@@ -151,6 +151,20 @@ const AdminCurator = () => {
     setPublishStatus(null);
     setView('review');
     loadCurationDetail(curId);
+  };
+
+  /* ── Retry a Failed Curation (same prompt) ──────── */
+  const handleRetryCuration = async () => {
+    if (!activeCurationId) return;
+    setRetrying(true);
+    const { ok, data } = await apiFetch(`/admin/curations/${activeCurationId}/retry`, 'POST');
+    setRetrying(false);
+    if (ok) {
+      await loadCurationDetail(activeCurationId);
+      loadPastCurations();
+    } else {
+      setCurationData(prev => ({ ...prev, Error: data?.error || 'Retry failed to start.' }));
+    }
   };
 
   /* ── Delete a Curation ──────────────────────────── */
@@ -285,7 +299,7 @@ const AdminCurator = () => {
               setPublishStatus(null);
             }}
           >
-            <Sparkles size={14} /> New AI Curation
+            <Plus size={14} /> New Curation
           </button>
           <button
             type="button"
@@ -327,9 +341,9 @@ const AdminCurator = () => {
                 justifyContent: 'center',
               }}
             >
-              <Bot size={20} color="var(--color-accent-light)" />
+              <SlidersHorizontal size={18} color="var(--color-accent-light)" />
             </div>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: '800' }}>AI Curriculum Curator</h2>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: '800' }}>Curriculum Curator</h2>
           </div>
 
           <p
@@ -430,7 +444,7 @@ const AdminCurator = () => {
                 </>
               ) : (
                 <>
-                  <Sparkles size={16} /> Research & Curate Course
+                  <BookOpen size={16} /> Research &amp; Curate Course
                 </>
               )}
             </button>
@@ -602,14 +616,26 @@ const AdminCurator = () => {
                 <strong style={{ fontSize: '1rem' }}>Curation failed</strong>
               </div>
               <p style={{ margin: 0, fontSize: '0.88rem' }}>{curationData.Error || 'An error occurred during agent execution.'}</p>
-              <button
-                type="button"
-                className="btn btn-outline"
-                style={{ padding: '6px 14px', marginTop: '8px' }}
-                onClick={() => setView('create')}
-              >
-                Try Again with Different Prompt
-              </button>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '8px' }}>
+                <button
+                  id="curator-retry"
+                  type="button"
+                  className="btn btn-primary"
+                  style={{ padding: '6px 14px' }}
+                  disabled={retrying}
+                  onClick={handleRetryCuration}
+                >
+                  {retrying ? 'Retrying…' : 'Retry Curation'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  style={{ padding: '6px 14px' }}
+                  onClick={() => setView('create')}
+                >
+                  Try Again with Different Prompt
+                </button>
+              </div>
             </div>
           )}
 
@@ -626,6 +652,12 @@ const AdminCurator = () => {
                 )}
               </div>
             </div>
+          )}
+
+          {curationData?.Draft?.models_used?.length > 0 && (
+            <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--color-text-subtle)' }}>
+              Generated with: {curationData.Draft.models_used.join(' → ')}
+            </p>
           )}
 
           {/* Review & Edit Screen (Available when DRAFT or PUBLISHED) */}
@@ -672,7 +704,7 @@ const AdminCurator = () => {
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '700', marginBottom: '4px', color: 'var(--color-accent-light)' }}>
-                      <Sparkles size={14} /> Agent Curriculum Rationale
+                      <BookOpen size={14} /> Curriculum Rationale
                     </div>
                     {curationData.Draft.summary_rationale}
                   </div>

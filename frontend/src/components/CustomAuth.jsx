@@ -7,16 +7,25 @@ import {
   confirmResetPassword,
   resendSignUpCode,
 } from 'aws-amplify/auth';
-import { BookOpen, TrendingUp, Zap, ArrowLeft } from 'lucide-react';
+import {
+  BookOpen,
+  TrendingUp,
+  FileText,
+  ArrowLeft,
+  Mail,
+  KeyRound,
+  Shield,
+  Sun,
+  Moon,
+} from 'lucide-react';
 import Spinner from './Spinner';
 import { useTheme } from '../useTheme';
-import { Sun, Moon } from 'lucide-react';
 
 /* ── Brand panel feature list ──────────────────────── */
 const BRAND_FEATURES = [
-  { Icon: BookOpen,   text: 'Curated courses built by industry practitioners' },
-  { Icon: TrendingUp, text: 'Real-time progress tracking & milestones'        },
-  { Icon: Zap,        text: 'Learn at your pace, on any device'               },
+  { Icon: BookOpen,   text: 'Structured video curricula across core engineering domains' },
+  { Icon: FileText,   text: 'Timestamped lesson notes and grounded course Q&A' },
+  { Icon: TrendingUp, text: 'Per-lesson completion tracking and saved course lists' },
 ];
 
 /*
@@ -37,8 +46,8 @@ const CustomAuth = ({ onSuccess }) => {
   const [code,            setCode]            = useState('');
   const [newPassword,     setNewPassword]     = useState('');
 
-  const clear  = ()           => { setError(''); setInfo(''); };
-  const go     = (v)          => { clear(); setView(v); };
+  const clear = ()  => { setError(''); setInfo(''); };
+  const go    = (v) => { clear(); setView(v); };
 
   /* ── Auth handlers (direct Amplify v6 API calls) ──── */
   const handleSignIn = async (e) => {
@@ -49,9 +58,9 @@ const CustomAuth = ({ onSuccess }) => {
     try {
       const { isSignedIn } = await signIn({ username, password });
       if (isSignedIn) {
-        onSuccess?.();   // triggers loadUser() in App.jsx
+        onSuccess?.();
       } else {
-        setError('Sign-in incomplete — please try again.');
+        setError('Sign-in incomplete. Please try again.');
       }
     } catch (err) {
       setError(err.message || 'Sign in failed. Please try again.');
@@ -63,7 +72,10 @@ const CustomAuth = ({ onSuccess }) => {
   const handleSignUp = async (e) => {
     e.preventDefault();
     clear();
-    if (password !== confirmPassword) { setError('Passwords do not match.'); return; }
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
     setLoading(true);
     const username = email.trim().toLowerCase();
     try {
@@ -88,7 +100,7 @@ const CustomAuth = ({ onSuccess }) => {
     setLoading(true);
     try {
       await confirmSignUp({ username: email, confirmationCode: code });
-      setInfo('Account verified! You can now sign in.');
+      setInfo('Account verified. You can now sign in.');
       go('sign-in');
     } catch (err) {
       setError(err.message || 'Verification failed. Please try again.');
@@ -116,7 +128,10 @@ const CustomAuth = ({ onSuccess }) => {
   const handleConfirmReset = async (e) => {
     e.preventDefault();
     clear();
-    if (newPassword !== confirmPassword) { setError('Passwords do not match.'); return; }
+    if (newPassword !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
     setLoading(true);
     try {
       await confirmResetPassword({
@@ -124,7 +139,7 @@ const CustomAuth = ({ onSuccess }) => {
         confirmationCode: code,
         newPassword,
       });
-      setInfo('Password reset! Sign in with your new password.');
+      setInfo('Password updated. Sign in with your new password.');
       go('sign-in');
     } catch (err) {
       setError(err.message || 'Reset failed. Please try again.');
@@ -137,7 +152,7 @@ const CustomAuth = ({ onSuccess }) => {
     clear();
     try {
       await resendSignUpCode({ username: email.trim().toLowerCase() });
-      setInfo('A new code has been sent to your email.');
+      setInfo('A new verification code has been sent to your email.');
     } catch (err) {
       setError(err.message || 'Could not resend code.');
     }
@@ -164,23 +179,18 @@ const CustomAuth = ({ onSuccess }) => {
   /* ── Render ────────────────────────────────────────── */
   return (
     <div className="auth-layout">
-
-      {/* ════ LEFT — Brand Panel ════ */}
+      {/* ════ LEFT: Brand Panel ════ */}
       <div className="auth-brand-panel" aria-hidden="true">
-        <div className="auth-blob auth-blob-1" />
-        <div className="auth-blob auth-blob-2" />
-        <div className="auth-blob auth-blob-3" />
         <div className="auth-grid-pattern" />
 
         <div className="auth-brand-inner">
           <div className="auth-brand-logo">tx</div>
           <h1 className="auth-brand-headline">
-            Master Your<br />
-            <span className="auth-brand-headline-accent">Future.</span>
+            Technical learning,<br />
+            structured for depth.
           </h1>
           <p className="auth-brand-sub">
-            The platform built for developers who are serious about growth.
-            No fluff — only real skills that ship to production.
+            Study curated software engineering courses, track per-lesson progress, and keep timestamped notes in one workspace.
           </p>
           <ul className="auth-brand-features">
             {BRAND_FEATURES.map((f) => {
@@ -196,11 +206,11 @@ const CustomAuth = ({ onSuccess }) => {
         </div>
       </div>
 
-      {/* ════ RIGHT — Form Panel ════ */}
+      {/* ════ RIGHT: Form Panel ════ */}
       <div className="auth-form-panel">
-
         <button
           id="auth-theme-toggle"
+          type="button"
           className="auth-theme-btn"
           onClick={toggleTheme}
           aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
@@ -215,16 +225,21 @@ const CustomAuth = ({ onSuccess }) => {
           {view === 'sign-in' && (
             <>
               <div className="auth-view-header">
-                <h2 className="auth-view-title">Welcome back</h2>
-                <p className="auth-view-sub">Sign in to continue your learning journey.</p>
+                <h2 className="auth-view-title">Sign in</h2>
+                <p className="auth-view-sub">Access your courses, saved bookmarks, and study notes.</p>
               </div>
 
               <div className="auth-tabs" role="tablist">
-                <button className="auth-tab is-active" role="tab" aria-selected="true">
+                <button type="button" className="auth-tab is-active" role="tab" aria-selected="true">
                   Sign In
                 </button>
-                <button className="auth-tab" role="tab" aria-selected="false"
-                  onClick={() => go('sign-up')}>
+                <button
+                  type="button"
+                  className="auth-tab"
+                  role="tab"
+                  aria-selected="false"
+                  onClick={() => go('sign-up')}
+                >
                   Create Account
                 </button>
               </div>
@@ -234,33 +249,55 @@ const CustomAuth = ({ onSuccess }) => {
               <form onSubmit={handleSignIn} className="auth-form" noValidate>
                 <div className="form-group">
                   <label className="auth-label" htmlFor="signin-email">Email</label>
-                  <input id="signin-email" type="email" className="input"
-                    value={email} onChange={e => setEmail(e.target.value)}
-                    placeholder="you@example.com" required autoComplete="email" autoFocus />
+                  <input
+                    id="signin-email"
+                    name="email"
+                    type="email"
+                    className="input"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    required
+                    autoComplete="email"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck="false"
+                    autoFocus
+                  />
                 </div>
 
                 <div className="form-group">
-                  <label className="auth-label" htmlFor="signin-password">
-                    <span className="auth-label-row">
+                  <div className="auth-label-row" style={{ marginBottom: '8px' }}>
+                    <label className="auth-label" htmlFor="signin-password" style={{ marginBottom: 0 }}>
                       Password
-                      <button type="button" className="auth-link"
-                        onClick={() => go('forgot')}>
-                        Forgot password?
-                      </button>
-                    </span>
-                  </label>
-                  <input id="signin-password" type="password" className="input"
-                    value={password} onChange={e => setPassword(e.target.value)}
-                    required autoComplete="current-password" />
+                    </label>
+                    <button
+                      type="button"
+                      className="auth-link"
+                      onClick={() => go('forgot')}
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                  <input
+                    id="signin-password"
+                    name="password"
+                    type="password"
+                    className="input"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    autoComplete="current-password"
+                  />
                 </div>
 
-                <SubmitBtn label="Sign In" busyLabel="Signing in…" />
+                <SubmitBtn label="Sign In" busyLabel="Signing in..." />
               </form>
 
               <p className="auth-footer-note">
-                Don't have an account?{' '}
-                <button className="auth-link" onClick={() => go('sign-up')}>
-                  Create one for free
+                Need an account?{' '}
+                <button type="button" className="auth-link" onClick={() => go('sign-up')}>
+                  Create an account
                 </button>
               </p>
             </>
@@ -271,15 +308,20 @@ const CustomAuth = ({ onSuccess }) => {
             <>
               <div className="auth-view-header">
                 <h2 className="auth-view-title">Create account</h2>
-                <p className="auth-view-sub">Start your developer growth journey today.</p>
+                <p className="auth-view-sub">Enroll in courses and track your progress across devices.</p>
               </div>
 
               <div className="auth-tabs" role="tablist">
-                <button className="auth-tab" role="tab" aria-selected="false"
-                  onClick={() => go('sign-in')}>
+                <button
+                  type="button"
+                  className="auth-tab"
+                  role="tab"
+                  aria-selected="false"
+                  onClick={() => go('sign-in')}
+                >
                   Sign In
                 </button>
-                <button className="auth-tab is-active" role="tab" aria-selected="true">
+                <button type="button" className="auth-tab is-active" role="tab" aria-selected="true">
                   Create Account
                 </button>
               </div>
@@ -289,31 +331,58 @@ const CustomAuth = ({ onSuccess }) => {
               <form onSubmit={handleSignUp} className="auth-form" noValidate>
                 <div className="form-group">
                   <label className="auth-label" htmlFor="signup-email">Email</label>
-                  <input id="signup-email" type="email" className="input"
-                    value={email} onChange={e => setEmail(e.target.value)}
-                    placeholder="you@example.com" required autoComplete="email" autoFocus />
+                  <input
+                    id="signup-email"
+                    name="email"
+                    type="email"
+                    className="input"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    required
+                    autoComplete="email"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck="false"
+                    autoFocus
+                  />
                 </div>
 
                 <div className="form-group">
                   <label className="auth-label" htmlFor="signup-password">Password</label>
-                  <input id="signup-password" type="password" className="input"
-                    value={password} onChange={e => setPassword(e.target.value)}
-                    required minLength={8} autoComplete="new-password" />
+                  <input
+                    id="signup-password"
+                    name="password"
+                    type="password"
+                    className="input"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    minLength={8}
+                    autoComplete="new-password"
+                  />
                 </div>
 
                 <div className="form-group">
                   <label className="auth-label" htmlFor="signup-confirm">Confirm Password</label>
-                  <input id="signup-confirm" type="password" className="input"
-                    value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
-                    required autoComplete="new-password" />
+                  <input
+                    id="signup-confirm"
+                    name="confirmPassword"
+                    type="password"
+                    className="input"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    autoComplete="new-password"
+                  />
                 </div>
 
-                <SubmitBtn label="Create Account" busyLabel="Creating account…" />
+                <SubmitBtn label="Create Account" busyLabel="Creating account..." />
               </form>
 
               <p className="auth-footer-note">
                 Already have an account?{' '}
-                <button className="auth-link" onClick={() => go('sign-in')}>Sign in</button>
+                <button type="button" className="auth-link" onClick={() => go('sign-in')}>Sign in</button>
               </p>
             </>
           )}
@@ -322,8 +391,10 @@ const CustomAuth = ({ onSuccess }) => {
           {view === 'confirm' && (
             <>
               <div className="auth-view-header">
-                <div className="auth-view-icon">✉️</div>
-                <h2 className="auth-view-title">Check your email</h2>
+                <div className="auth-view-icon" aria-hidden="true">
+                  <Mail size={20} color="var(--color-accent-light)" />
+                </div>
+                <h2 className="auth-view-title">Verify your email</h2>
                 <p className="auth-view-sub">
                   Enter the 6-digit code sent to <strong>{email}</strong>
                 </p>
@@ -334,17 +405,27 @@ const CustomAuth = ({ onSuccess }) => {
               <form onSubmit={handleConfirm} className="auth-form" noValidate>
                 <div className="form-group">
                   <label className="auth-label" htmlFor="confirm-code">Verification Code</label>
-                  <input id="confirm-code" type="text" inputMode="numeric"
+                  <input
+                    id="confirm-code"
+                    name="code"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
                     className="input auth-code-input"
-                    value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))}
-                    placeholder="· · · · · ·" maxLength={6} required autoFocus />
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                    placeholder="000000"
+                    maxLength={6}
+                    required
+                    autoFocus
+                  />
                 </div>
-                <SubmitBtn label="Verify & Continue" busyLabel="Verifying…" />
+                <SubmitBtn label="Verify & Continue" busyLabel="Verifying..." />
               </form>
 
               <p className="auth-footer-note">
-                Didn't receive a code?{' '}
-                <button className="auth-link" onClick={handleResend}>Resend</button>
+                Did not receive a code?{' '}
+                <button type="button" className="auth-link" onClick={handleResend}>Resend code</button>
               </p>
             </>
           )}
@@ -352,15 +433,17 @@ const CustomAuth = ({ onSuccess }) => {
           {/* ── FORGOT PASSWORD ── */}
           {view === 'forgot' && (
             <>
-              <button className="auth-back-btn" onClick={() => go('sign-in')}>
-                <ArrowLeft size={15} /> Back to Sign In
+              <button type="button" className="auth-back-btn" onClick={() => go('sign-in')}>
+                <ArrowLeft size={15} aria-hidden="true" /> Back to Sign In
               </button>
 
               <div className="auth-view-header" style={{ marginTop: '16px' }}>
-                <div className="auth-view-icon">🔑</div>
+                <div className="auth-view-icon" aria-hidden="true">
+                  <KeyRound size={20} color="var(--color-accent-light)" />
+                </div>
                 <h2 className="auth-view-title">Reset Password</h2>
                 <p className="auth-view-sub">
-                  Enter your email and we'll send a reset code.
+                  Enter your account email and we will send a password reset code.
                 </p>
               </div>
 
@@ -369,11 +452,23 @@ const CustomAuth = ({ onSuccess }) => {
               <form onSubmit={handleForgotPassword} className="auth-form" noValidate>
                 <div className="form-group">
                   <label className="auth-label" htmlFor="forgot-email">Email</label>
-                  <input id="forgot-email" type="email" className="input"
-                    value={email} onChange={e => setEmail(e.target.value)}
-                    placeholder="you@example.com" required autoComplete="email" autoFocus />
+                  <input
+                    id="forgot-email"
+                    name="email"
+                    type="email"
+                    className="input"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    required
+                    autoComplete="email"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck="false"
+                    autoFocus
+                  />
                 </div>
-                <SubmitBtn label="Send Reset Code" busyLabel="Sending…" />
+                <SubmitBtn label="Send Reset Code" busyLabel="Sending..." />
               </form>
             </>
           )}
@@ -381,15 +476,17 @@ const CustomAuth = ({ onSuccess }) => {
           {/* ── CONFIRM RESET ── */}
           {view === 'confirm-reset' && (
             <>
-              <button className="auth-back-btn" onClick={() => go('sign-in')}>
-                <ArrowLeft size={15} /> Back to Sign In
+              <button type="button" className="auth-back-btn" onClick={() => go('sign-in')}>
+                <ArrowLeft size={15} aria-hidden="true" /> Back to Sign In
               </button>
 
               <div className="auth-view-header" style={{ marginTop: '16px' }}>
-                <div className="auth-view-icon">🛡️</div>
+                <div className="auth-view-icon" aria-hidden="true">
+                  <Shield size={20} color="var(--color-accent-light)" />
+                </div>
                 <h2 className="auth-view-title">Set New Password</h2>
                 <p className="auth-view-sub">
-                  Enter the reset code from your email and a new password.
+                  Enter the reset code from your email and choose a new password.
                 </p>
               </div>
 
@@ -398,33 +495,57 @@ const CustomAuth = ({ onSuccess }) => {
               <form onSubmit={handleConfirmReset} className="auth-form" noValidate>
                 <div className="form-group">
                   <label className="auth-label" htmlFor="reset-code">Reset Code</label>
-                  <input id="reset-code" type="text" inputMode="numeric"
+                  <input
+                    id="reset-code"
+                    name="code"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
                     className="input auth-code-input"
-                    value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))}
-                    placeholder="· · · · · ·" maxLength={6} required autoFocus />
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                    placeholder="000000"
+                    maxLength={6}
+                    required
+                    autoFocus
+                  />
                 </div>
 
                 <div className="form-group">
                   <label className="auth-label" htmlFor="reset-new-pass">New Password</label>
-                  <input id="reset-new-pass" type="password" className="input"
-                    value={newPassword} onChange={e => setNewPassword(e.target.value)}
-                    required minLength={8} autoComplete="new-password" />
+                  <input
+                    id="reset-new-pass"
+                    name="newPassword"
+                    type="password"
+                    className="input"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    required
+                    minLength={8}
+                    autoComplete="new-password"
+                  />
                 </div>
 
                 <div className="form-group">
                   <label className="auth-label" htmlFor="reset-confirm-pass">
                     Confirm New Password
                   </label>
-                  <input id="reset-confirm-pass" type="password" className="input"
-                    value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
-                    required autoComplete="new-password" />
+                  <input
+                    id="reset-confirm-pass"
+                    name="confirmPassword"
+                    type="password"
+                    className="input"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    autoComplete="new-password"
+                  />
                 </div>
 
-                <SubmitBtn label="Reset Password" busyLabel="Resetting…" />
+                <SubmitBtn label="Reset Password" busyLabel="Resetting..." />
               </form>
             </>
           )}
-
         </div>
       </div>
     </div>

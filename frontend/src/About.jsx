@@ -1,53 +1,58 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import {
-  BookOpen, TrendingUp, CheckCircle, Zap, Users, Award,
+  BookOpen,
+  TrendingUp,
+  CheckCircle,
+  Volume2,
+  FileText,
+  MessageSquare,
 } from 'lucide-react';
 
 const FEATURES = [
   {
     icon: BookOpen,
-    title: 'Curated Curriculum',
+    title: 'Ordered Video Curricula',
     description:
-      'Every course is hand-picked and structured for real-world impact. No fluff, only the skills that move careers forward.',
+      'Courses are organized into sequential lessons so you can study complex systems from foundational concepts to implementation.',
+  },
+  {
+    icon: FileText,
+    title: 'Timestamped Lesson Notes',
+    description:
+      'Capture study notes alongside every video lesson, insert playback timestamps with one click, and jump directly back to key moments.',
+  },
+  {
+    icon: Volume2,
+    title: 'Synchronized Audio Descriptions',
+    description:
+      'Optional extended audio descriptions narrate on-screen code, terminal output, and architecture diagrams during natural pauses.',
+  },
+  {
+    icon: MessageSquare,
+    title: 'Grounded Lesson Q&A',
+    description:
+      'Ask technical questions about the active lesson and receive answers grounded in the video transcript and on-screen code with clickable timestamps.',
   },
   {
     icon: TrendingUp,
-    title: 'Track Your Progress',
+    title: 'Per-Lesson Progress Tracking',
     description:
-      'Watch your advancement in real time. Detailed per-course progress tracking keeps you accountable and motivated.',
-  },
-  {
-    icon: Zap,
-    title: 'Learn at Your Pace',
-    description:
-      'No deadlines, no pressure. Pause, rewind, and build your understanding on your own schedule — on any device.',
+      'Track completed lessons across every enrolled course from your personal dashboard and pick up right where you left off.',
   },
   {
     icon: CheckCircle,
-    title: 'Project-First Approach',
+    title: 'Curated & Reviewed Catalog',
     description:
-      'Theory is just the beginning. Every course is centred around building things so you finish with tangible proof of skill.',
-  },
-  {
-    icon: Users,
-    title: 'Expert-Led Content',
-    description:
-      'Content sourced from industry practitioners who have solved real production problems at scale — not just theorists.',
-  },
-  {
-    icon: Award,
-    title: 'Milestone Recognition',
-    description:
-      'Complete courses, mark lessons watched, and build a portfolio of completed work that speaks louder than a certificate.',
+      'Every curriculum in the marketplace is reviewed by platform administrators before publication to maintain consistent technical quality.',
   },
 ];
 
 const STATS = [
-  { value: '50+', label: 'Courses Available' },
-  { value: '∞', label: 'Lessons Completed' },
-  { value: '10+', label: 'Active Learners' },
-  { value: '85%', label: 'Satisfaction Rate' },
+  { value: '50+',   label: 'Technical Courses' },
+  { value: '400+',  label: 'Video Lessons' },
+  { value: '100%',  label: 'Self-Paced Access' },
+  { value: 'WCAG',  label: 'Accessible Player' },
 ];
 
 const TECH_STACK = [
@@ -56,42 +61,34 @@ const TECH_STACK = [
 ];
 
 const About = () => (
-  <div className="page-wrapper">
-
+  <main className="page-wrapper">
     {/* ── HERO ─────────────────────────────────────── */}
     <section className="about-hero">
       <div className="container">
-        <div className="about-hero-content fade-in-up">
-          <div
-            className="badge badge-blue"
-            style={{ marginBottom: '22px', display: 'inline-flex' }}
-          >
-            Our Mission
-          </div>
+        <div className="about-hero-content">
+          <p className="section-eyebrow">About the Platform</p>
 
           <h1 className="about-title">
-            Built for everyone,<br />
-            {/* <span className="about-title-accent">by developers.</span> */}
+            Focused technical education for working and aspiring engineers.
           </h1>
 
           <p className="about-subtitle">
-            tx is a focused learning platform for people who are serious about technology.
-            We believe the best way to learn is by doing and everything here
-            is built around that principle.
+            tx organizes high-signal technical tutorials into structured, distraction-free courses
+            complete with progress tracking, per-lesson study notes, and accessibility tools.
           </p>
 
           <div className="about-hero-actions">
             <Link
-              to="/"
+              to="/courses"
               className="btn btn-primary"
-              style={{ padding: '14px 28px', fontSize: '1rem' }}
+              style={{ padding: '12px 24px', fontSize: '0.95rem' }}
             >
-              Start Exploring
+              Course Marketplace
             </Link>
             <Link
               to="/dashboard"
               className="btn btn-ghost"
-              style={{ padding: '14px 28px', fontSize: '1rem' }}
+              style={{ padding: '12px 24px', fontSize: '0.95rem' }}
             >
               My Dashboard
             </Link>
@@ -115,30 +112,29 @@ const About = () => (
     </section>
 
     {/* ── FEATURES ─────────────────────────────────── */}
-    <section style={{ padding: '80px 0' }}>
+    <section style={{ padding: '72px 0' }}>
       <div className="container">
-        <div style={{ textAlign: 'center', marginBottom: '52px' }}>
+        <div style={{ marginBottom: '44px', maxWidth: '580px' }}>
+          <p className="section-eyebrow">Capabilities</p>
           <h2
             style={{
-              fontSize: '1.9rem',
+              fontSize: '1.8rem',
               fontWeight: '800',
-              marginBottom: '14px',
+              marginBottom: '12px',
               color: 'var(--color-text-primary)',
               letterSpacing: '-0.5px',
             }}
           >
-            Everything you need to level up
+            Designed for technical study
           </h2>
           <p
             style={{
               color: 'var(--color-text-secondary)',
-              maxWidth: '520px',
-              margin: '0 auto',
-              fontSize: '1rem',
-              lineHeight: '1.7',
+              fontSize: '0.95rem',
+              lineHeight: '1.65',
             }}
           >
-            We've stripped away the noise and kept only what makes developers better.
+            Video platforms are built for entertainment. tx wraps technical video content in a workspace designed for retention and active study.
           </p>
         </div>
 
@@ -146,16 +142,16 @@ const About = () => (
           {FEATURES.map((feature) => {
             const FeatureIcon = feature.icon;
             return (
-              <div key={feature.title} className="card about-feature-card">
-                <div className="about-icon-wrap">
-                  <FeatureIcon size={22} color="var(--color-accent-light)" />
+              <article key={feature.title} className="card about-feature-card">
+                <div className="about-icon-wrap" aria-hidden="true">
+                  <FeatureIcon size={20} color="var(--color-accent-light)" />
                 </div>
                 <h3
                   style={{
                     fontWeight: '700',
-                    marginBottom: '10px',
+                    marginBottom: '8px',
                     color: 'var(--color-text-primary)',
-                    fontSize: '1.05rem',
+                    fontSize: '1.02rem',
                   }}
                 >
                   {feature.title}
@@ -164,12 +160,12 @@ const About = () => (
                   style={{
                     color: 'var(--color-text-secondary)',
                     fontSize: '0.88rem',
-                    lineHeight: '1.75',
+                    lineHeight: '1.7',
                   }}
                 >
                   {feature.description}
                 </p>
-              </div>
+              </article>
             );
           })}
         </div>
@@ -183,16 +179,16 @@ const About = () => (
           style={{
             textAlign: 'center',
             fontWeight: '800',
-            marginBottom: '40px',
+            marginBottom: '32px',
             color: 'var(--color-text-primary)',
-            fontSize: '1.7rem',
-            letterSpacing: '-0.5px',
+            fontSize: '1.5rem',
+            letterSpacing: '-0.4px',
           }}
         >
-          What you'll master
+          Core topics covered in the catalog
         </h2>
         <div className="about-stack-grid">
-          {TECH_STACK.map(tech => (
+          {TECH_STACK.map((tech) => (
             <div key={tech} className="about-stack-chip">
               {tech}
             </div>
@@ -202,45 +198,42 @@ const About = () => (
     </section>
 
     {/* ── CTA ──────────────────────────────────────── */}
-    <section style={{ padding: '80px 0' }}>
+    <section style={{ padding: '72px 0' }}>
       <div className="container">
-        <div className="about-cta-card fade-in-up">
+        <div className="about-cta-card">
           <h2
             style={{
-              fontSize: '2rem',
+              fontSize: '1.75rem',
               fontWeight: '800',
-              marginBottom: '16px',
+              marginBottom: '12px',
               color: 'var(--color-text-primary)',
               letterSpacing: '-0.5px',
             }}
           >
-            Ready to start building?
+            Explore the course catalog
           </h2>
           <p
             style={{
               color: 'var(--color-text-secondary)',
-              marginBottom: '32px',
-              maxWidth: '420px',
-              margin: '0 auto 32px',
-              fontSize: '1rem',
-              lineHeight: '1.7',
+              maxWidth: '440px',
+              margin: '0 auto 28px',
+              fontSize: '0.95rem',
+              lineHeight: '1.65',
             }}
           >
-            Join hundreds of developers already sharpening their skills on tx.
-            Your next breakthrough is one course away.
+            Browse all available courses in the marketplace, filter by technology or experience level, and start learning immediately.
           </p>
           <Link
-            to="/"
+            to="/courses"
             className="btn btn-primary"
-            style={{ padding: '14px 32px', fontSize: '1rem' }}
+            style={{ padding: '12px 28px', fontSize: '0.95rem' }}
           >
-            Browse All Courses
+            Browse Course Marketplace
           </Link>
         </div>
       </div>
     </section>
-
-  </div>
+  </main>
 );
 
 export default About;

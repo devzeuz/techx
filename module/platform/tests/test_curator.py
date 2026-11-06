@@ -265,3 +265,110 @@ def test_publish_curation_writes_course(aws):
     cur_item = table.get_item(Key={"PK": "CURATION#PUB1", "SK": "METADATA"})["Item"]
     assert cur_item["Status"] == "PUBLISHED"
     assert cur_item["PublishedCourseId"] == course_id
+
+
+def test_retry_curation_endpoint(aws):
+    table, mod, invoked = aws
+    # Curation must exist and be FAILED
+    table.put_item(Item={
+        "PK": "CURATION#FAIL1", "SK": "METADATA", "Type": "CURATION",
+        "Status": "FAILED", "Error": "The read operation timed out",
+        "Prompt": "Rust Async Programming",
+    })
+
+    # Learner forbidden
+    status, _ = call(mod, ev("POST /admin/curations/{id}/retry", LEARNER, path={"id": "FAIL1"}))
+    assert status == 403
+
+    # Admin retry succeeds
+    status, body = call(mod, ev("POST /admin/curations/{id}/retry", ADMIN, path={"id": "FAIL1"}))
+    assert status == 202
+    assert body["curationId"] == "FAIL1"
+    assert body["status"] == "RUNNING"
+    assert len(invoked) == 1
+    assert json.loads(invoked[0]["Payload"]) == {"action": "EXECUTE_CURATION", "curationId": "FAIL1"}
+
+    # Status updated in DynamoDB and Error cleared
+    item = table.get_item(Key={"PK": "CURATION#FAIL1", "SK": "METADATA"})["Item"]
+    assert item["Status"] == "RUNNING"
+    assert "Error" not in item
+
+    # Retrying a non-FAILED job returns 409
+    table.put_item(Item={
+        "PK": "CURATION#DRAFT1", "SK": "METADATA", "Type": "CURATION",
+        "Status": "DRAFT", "Prompt": "Python"
+    })
+    status, _ = call(mod, ev("POST /admin/curations/{id}/retry", ADMIN, path={"id": "DRAFT1"}))
+    assert status == 409
+
+
+def test_curator_conversational_reprompt_recovery(aws, monkeypatch):
+    _, mod, _ = aws
+
+    calls = []
+    def fake_gemini(contents, tools=None):
+        import copy
+        calls.append(copy.deepcopy(contents))
+        if len(calls) == 1:
+            # Turn 0: conversational text without function call
+            return {
+                "_model": "gemini-3.8-flash",
+                "candidates": [{
+                    "content": {
+                        "parts": [{"text": "I will formulate a course on WebSockets for you."}]
+                    }
+                }]
+            }
+        # Turn 1: model submits the course after receiving nudge
+        return {
+            "_model": "gemini-3.8-flash",
+            "candidates": [{
+                "content": {
+                    "parts": [{
+                        "functionCall": {
+                            "name": "submit_curated_course",
+                            "args": {
+                                "course_title": "WebSockets Real-time",
+                                "course_description": "Learn WebSockets.",
+                                "level": "Intermediate",
+                                "lessons": [{"video_id": "ws1", "title": "WS Basics", "reason": "Intro"}]
+                            }
+                        }
+                    }]
+                }
+            }]
+        }
+
+    monkeypatch.setattr(mod, "_call_gemini_api", fake_gemini)
+    monkeypatch.setattr(mod, "get_video_details", lambda ids: [{"id": "ws1", "title": "WS", "duration_s": 200}])
+
+    draft = mod.run_curator_agent("WebSockets", {})
+    assert draft["title"] == "WebSockets Real-time"
+    assert len(draft["lessons"]) == 1
+    assert len(calls) == 2
+    # Verify the second call included a nudge prompt in history
+    last_user_turn = calls[1][-1]
+    assert last_user_turn["role"] == "user"
+    assert "submit_curated_course" in last_user_turn["parts"][0]["text"]
+
+
+
+def test_gemini_model_fallback(aws, monkeypatch):
+    _, mod, _ = aws
+
+    attempted_models = []
+    def fake_call_model(model, contents, tools):
+        attempted_models.append(model)
+        if model == mod.GEMINI_MODEL:
+            raise mod._RetryableGeminiError("The read operation timed out")
+        return {
+            "candidates": [{"content": {"parts": [{"text": "Fallback success"}]}}]
+        }
+
+    monkeypatch.setattr(mod, "_call_model", fake_call_model)
+    resp = mod._call_gemini_api([{"role": "user", "parts": [{"text": "Hi"}]}])
+
+    assert resp["_model"] == "gemini-3-flash-preview"
+    assert "gemini-3.8-flash" in attempted_models
+    assert "gemini-3-flash-preview" in attempted_models
+

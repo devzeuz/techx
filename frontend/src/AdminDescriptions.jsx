@@ -7,10 +7,18 @@ const IN_PROGRESS = ['QUEUED', 'DOWNLOADING', 'TRANSCRIBING', 'EXTRACTING_FRAMES
 const MAX_PER_REQUEST = 10;
 const POLL_MS = 15000;
 
+const FAILURE_LABELS = {
+  AUDIO_FAILED: 'Audio download failed',
+  PAUSE_MAP_FAILED: 'Pause detection failed',
+  FRAME_EXTRACTION_FAILED: 'Frame extraction failed',
+  FRAME_FAILED: 'Frame extraction failed',
+  DESCRIPTION_FAILED: 'AI vision failed',
+};
+
 const statusView = (s = 'NONE') => {
   if (s === 'DESCRIPTIONS_READY') return { label: 'Ready', cls: 'badge-green' };
   if (IN_PROGRESS.includes(s))   return { label: s.replace(/_/g, ' ').toLowerCase(), cls: 'badge-blue' };
-  if (s.endsWith('FAILED'))      return { label: 'Failed', cls: 'badge-gold' };
+  if (s.endsWith('FAILED'))      return { label: FAILURE_LABELS[s] ?? 'Failed', cls: 'badge-gold', failed: true };
   return { label: 'Not generated', cls: '' };
 };
 
@@ -85,6 +93,14 @@ const AdminDescriptions = () => {
     }
   };
 
+  const retryVideo = async (ytId) => {
+    setResult({ type: 'loading', message: 'Re-queuing video…' });
+    const { ok, data } = await apiFetch('/admin/descriptions', 'POST', { courseId, videoIds: [ytId], force: true });
+    setResult(ok ? { type: 'success', message: data?.message ?? 'Video re-queued.' }
+                 : { type: 'error', message: data?.error ?? 'Could not re-queue video.' });
+    if (ok) loadStatus();
+  };
+
   return (
     <div className="card" style={{ padding: '32px', cursor: 'default' }}>
       <h2 style={{ fontWeight: 700, marginBottom: 8, fontSize: '1.15rem', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -126,13 +142,27 @@ const AdminDescriptions = () => {
               const st = statuses[v.YouTubeID] ?? {};
               const view = statusView(st.status);
               return (
-                <li key={v.SK} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px',
-                                        borderTop: i ? '1px solid var(--color-border)' : 'none' }}>
-                  <span style={{ color: 'var(--color-text-subtle)', fontSize: '0.8rem', width: 22 }}>{i + 1}</span>
-                  <span style={{ flex: 1, fontSize: '0.88rem', minWidth: 0 }} title={st.error ?? ''}>{v.VideoTitle}</span>
-                  <span className={`badge ad-status ${view.cls}`}>
-                    {view.label}{st.status === 'DESCRIPTIONS_READY' && st.count ? ` · ${st.count}` : ''}
-                  </span>
+                <li key={v.SK} style={{ padding: '10px 14px', borderTop: i ? '1px solid var(--color-border)' : 'none' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span style={{ color: 'var(--color-text-subtle)', fontSize: '0.8rem', width: 22 }}>{i + 1}</span>
+                    <span style={{ flex: 1, fontSize: '0.88rem', minWidth: 0 }}>{v.VideoTitle}</span>
+                    <span className={`badge ad-status ${view.cls}`}>
+                      {view.label}{st.status === 'DESCRIPTIONS_READY' && st.count ? ` · ${st.count}` : ''}
+                    </span>
+                    {view.failed && (
+                      <button id={`ad-retry-${v.YouTubeID}`} type="button" className="btn btn-ghost"
+                        style={{ padding: '4px 10px', fontSize: '0.8rem' }}
+                        disabled={result?.type === 'loading'} onClick={() => retryVideo(v.YouTubeID)}>
+                        <RefreshCw size={12} /> Retry
+                      </button>
+                    )}
+                  </div>
+                  {view.failed && st.error && (
+                    <p style={{ margin: '6px 0 0 34px', fontSize: '0.78rem', color: 'var(--color-text-secondary)',
+                                wordBreak: 'break-word' }}>
+                      {st.error}
+                    </p>
+                  )}
                 </li>
               );
             })}

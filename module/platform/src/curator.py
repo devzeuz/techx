@@ -13,6 +13,7 @@ Routes (HTTP API routeKey, Cognito JWT authorizer):
   GET    /admin/curations/{id}        Get curation draft details
   DELETE /admin/curations/{id}        Delete a curation draft
   POST   /admin/curations/{id}/publish Review & publish draft to course catalog
+  POST   /admin/curations/{id}/retry   Re-run a FAILED curation with the same prompt
 
 Direct invoke (Async worker):
   {"action": "EXECUTE_CURATION", "curationId": "..."}
@@ -20,6 +21,8 @@ Direct invoke (Async worker):
 import json
 import os
 import re
+import socket
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -36,6 +39,11 @@ from youtube import fetch_playlist_items, get_video_details, search_videos
 TABLE_NAME = os.environ["TABLE_NAME"]
 GEMINI_SSM_PATH = os.environ.get("GEMINI_SSM_PATH", "gemini_api_key")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
+FALLBACK_MODELS = [m.strip() for m in os.environ.get(
+    "GEMINI_FALLBACK_MODELS", "gemini-3-flash-preview").split(",") if m.strip()]
+GEMINI_TIMEOUT_S = 45          # Lambda timeout is 300s
+RETRYABLE_CODES = {404, 429, 500, 503}
+MAX_TURNS = 10
 CURATOR_LAMBDA_NAME = os.environ.get("CURATOR_LAMBDA_NAME", "techx-curator")
 
 table = boto3.resource("dynamodb").Table(TABLE_NAME)
@@ -140,13 +148,22 @@ Guidelines:
 """
 
 
-def _call_gemini_api(contents: list, tools: list | None = None) -> dict:
+class _RetryableGeminiError(RuntimeError):
+    pass
+
+
+def _call_model(model: str, contents: list, tools: list | None) -> dict:
     api_key = get_gemini_api_key()
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    # Disable thinking for all models to ensure fast, low-latency function calling
+    gen_cfg = {
+        "temperature": 0.2,
+        "thinkingConfig": {"thinkingBudget": 0}
+    }
     payload = {
         "contents": contents,
         "systemInstruction": {"parts": [{"text": SYSTEM_INSTRUCTION}]},
-        "generationConfig": {"temperature": 0.2},
+        "generationConfig": gen_cfg,
     }
     if tools:
         payload["tools"] = [{"functionDeclarations": tools}]
@@ -158,11 +175,30 @@ def _call_gemini_api(contents: list, tools: list | None = None) -> dict:
         method="POST"
     )
     try:
-        with urllib.request.urlopen(req, timeout=25) as resp:
+        with urllib.request.urlopen(req, timeout=GEMINI_TIMEOUT_S) as resp:
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         err_msg = e.read().decode("utf-8", errors="replace")[:400]
-        raise RuntimeError(f"Gemini API error ({e.code}): {err_msg}") from e
+        cls = _RetryableGeminiError if e.code in RETRYABLE_CODES else RuntimeError
+        raise cls(f"Gemini API error ({e.code}) [{model}]: {err_msg}") from e
+    except (socket.timeout, TimeoutError, urllib.error.URLError) as e:
+        raise _RetryableGeminiError(f"Gemini request failed [{model}]: {e}") from e
+
+
+def _call_gemini_api(contents: list, tools: list | None = None) -> dict:
+    """Try the primary model, then each fallback. Fail-fast to next model on error."""
+    errors = []
+    candidates = [GEMINI_MODEL] + [m for m in FALLBACK_MODELS if m != GEMINI_MODEL]
+    for model in candidates:
+        try:
+            resp = _call_model(model, contents, tools)
+            resp["_model"] = model
+            return resp
+        except _RetryableGeminiError as e:
+            errors.append(str(e))
+            print(f"[curator] {e} -> failing over to next model")
+            continue
+    raise RuntimeError("All Gemini models failed: " + " | ".join(errors)[-900:])
 
 
 def run_curator_agent(prompt: str, constraints: dict) -> dict:
@@ -180,23 +216,26 @@ def run_curator_agent(prompt: str, constraints: dict) -> dict:
     user_prompt += "Please search YouTube, inspect candidate videos, and submit the final curated curriculum."
 
     contents = [{"role": "user", "parts": [{"text": user_prompt}]}]
-    max_turns = 6
+    models_used = []
 
-    for turn in range(max_turns):
+    for turn in range(MAX_TURNS):
         resp = _call_gemini_api(contents, CURATOR_TOOLS)
+        if resp.get("_model") not in models_used:
+            models_used.append(resp.get("_model"))
         candidates = resp.get("candidates") or []
         if not candidates:
             raise RuntimeError("Gemini returned no candidates")
 
         candidate_content = candidates[0].get("content") or {}
         parts = candidate_content.get("parts") or []
-        contents.append({"role": "model", "parts": parts})
+        contents.append({"role": "model", "parts": parts or [{"text": ""}]})
 
         # Check for function calls
         function_calls = [p["functionCall"] for p in parts if "functionCall" in p]
         if not function_calls:
-            # Model responded with plain text without calling submit_curated_course
-            break
+            # Plain text reply: nudge the model back to the tool instead of failing
+            contents.append({"role": "user", "parts": [{"text": _nudge(turn)}]})
+            continue
 
         tool_responses = []
         for fc in function_calls:
@@ -205,7 +244,9 @@ def run_curator_agent(prompt: str, constraints: dict) -> dict:
 
             if name == "submit_curated_course":
                 # Agent completed curation! Enforce thumbnails and return
-                return _enrich_draft(args)
+                draft = _enrich_draft(args)
+                draft["models_used"] = models_used
+                return draft
 
             # Execute tool
             tool_result = _execute_tool(name, args)
@@ -216,9 +257,18 @@ def run_curator_agent(prompt: str, constraints: dict) -> dict:
                 }
             })
 
+        if turn >= MAX_TURNS - 2:
+            tool_responses.append({"text": _nudge(turn)})
         contents.append({"role": "user", "parts": tool_responses})
 
     raise RuntimeError("AI Curator did not complete course submission within allowed turns")
+
+
+def _nudge(turn: int) -> str:
+    if turn >= MAX_TURNS - 2:
+        return ("You have almost no turns remaining. Call `submit_curated_course` NOW "
+                "using the best videos you have already gathered.")
+    return "Please proceed to assemble and finalize the course by calling the `submit_curated_course` tool."
 
 
 def _execute_tool(name: str, args: dict):
@@ -394,6 +444,35 @@ def delete_curation(event, claims):
     return response(200, {"message": f"Curation {curation_id} deleted"})
 
 
+def retry_curation(event, claims):
+    if not is_admin(claims):
+        return response(403, {"error": "Admins only"})
+
+    curation_id = (event.get("pathParameters") or {}).get("id")
+    if not curation_id:
+        return response(400, {"error": "Missing curation id"})
+
+    key = {"PK": f"CURATION#{curation_id}", "SK": "METADATA"}
+    item = table.get_item(Key=key).get("Item")
+    if not item:
+        return response(404, {"error": f"Curation {curation_id} not found"})
+    if item.get("Status") != "FAILED":
+        return response(409, {"error": "Only FAILED curations can be retried"})
+
+    table.update_item(
+        Key=key,
+        UpdateExpression="SET #s = :s, UpdatedAt = :now REMOVE #err",
+        ExpressionAttributeNames={"#s": "Status", "#err": "Error"},
+        ExpressionAttributeValues={":s": "RUNNING", ":now": _now()},
+    )
+    lambda_client.invoke(
+        FunctionName=CURATOR_LAMBDA_NAME,
+        InvocationType="Event",
+        Payload=json.dumps({"action": "EXECUTE_CURATION", "curationId": curation_id}).encode("utf-8")
+    )
+    return response(202, {"curationId": curation_id, "status": "RUNNING"})
+
+
 def publish_curation(event, claims):
     if not is_admin(claims):
         return response(403, {"error": "Admins only"})
@@ -481,6 +560,8 @@ def lambda_handler(event, context):
             return delete_curation(event, claims)
         if route == "POST /admin/curations/{id}/publish":
             return publish_curation(event, claims)
+        if route == "POST /admin/curations/{id}/retry":
+            return retry_curation(event, claims)
 
         return response(404, {"error": f"Unknown route {route}"})
     except ValueError as e:

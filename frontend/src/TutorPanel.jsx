@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Bot, Send, X, Sparkles } from 'lucide-react';
+import { MessageSquare, Send, X, BookOpen } from 'lucide-react';
 import { apiFetch } from './Api';
 
 /**
- * Phase 4 — AI Tutor drawer for the course player.
- * Answers are grounded in the lesson (cached Gemini notes + audio-description cues).
+ * Lesson Tutor drawer for the course player.
+ * Answers are grounded in the lesson (cached lesson notes + audio-description cues).
  * Timestamps like [04:12] in answers are rendered as buttons that seek the video.
  */
 const QUICK_PROMPTS = [
@@ -52,9 +52,7 @@ const TutorPanel = ({ open, onClose, courseId, video, getCurrentTime, onSeek }) 
   const inputRef = useRef(null);
   const videoId  = video?.YouTubeID;
 
-  // Chat resets per lesson: CoursePlayer remounts this panel with key={videoId}.
-
-  // Check readiness while open; poll while the tutor is studying the lesson
+  // Check readiness while open; poll while the lesson index is being prepared
   useEffect(() => {
     if (!open || !videoId) return undefined;
     let cancelled = false;
@@ -81,17 +79,17 @@ const TutorPanel = ({ open, onClose, courseId, video, getCurrentTime, onSeek }) 
     setError(null);
     setInput('');
     const history = messages.slice(-6);
-    setMessages(m => [...m, { role: 'user', text: q }]);
+    setMessages((m) => [...m, { role: 'user', text: q }]);
     setBusy(true);
     const { ok, status: code, data } = await apiFetch(`/videos/${videoId}/ask`, 'POST', {
       courseId, question: q, currentTime: getCurrentTime(), history,
     });
     setBusy(false);
     if (ok && data?.answer) {
-      setMessages(m => [...m, { role: 'tutor', text: data.answer }]);
+      setMessages((m) => [...m, { role: 'tutor', text: data.answer }]);
     } else if (code === 202) {
       setStatus('PREPARING');
-      setError('The tutor is still studying this lesson — try again shortly.');
+      setError('This lesson is still being indexed. Please try again shortly.');
     } else {
       setError(data?.error || 'Something went wrong. Please try again.');
     }
@@ -104,9 +102,11 @@ const TutorPanel = ({ open, onClose, courseId, video, getCurrentTime, onSeek }) 
   return (
     <aside className="tutor-panel" role="dialog" aria-modal="false" aria-labelledby="tutor-title">
       <header className="tutor-header">
-        <div className="tutor-title" id="tutor-title"><Bot size={18} /> AI Tutor</div>
-        <button type="button" className="tutor-close" onClick={onClose} aria-label="Close AI Tutor">
-          <X size={18} />
+        <div className="tutor-title" id="tutor-title">
+          <MessageSquare size={17} aria-hidden="true" /> Lesson Q&amp;A
+        </div>
+        <button type="button" className="tutor-close" onClick={onClose} aria-label="Close Lesson Q&A">
+          <X size={18} aria-hidden="true" />
         </button>
       </header>
 
@@ -114,15 +114,15 @@ const TutorPanel = ({ open, onClose, courseId, video, getCurrentTime, onSeek }) 
         {!ready && (
           <div className="tutor-status" role="status">
             {status === 'FAILED'
-              ? 'The tutor could not prepare this lesson. Please try again later.'
-              : <><span className="tutor-pulse" /> Studying this lesson… the first time takes about 2 minutes.</>}
+              ? 'Could not load context for this lesson. Please try again later.'
+              : <><span className="tutor-pulse" /> Indexing this lesson. Initial preparation takes about 2 minutes.</>}
           </div>
         )}
 
         {ready && messages.length === 0 && (
           <div className="tutor-empty">
-            <Sparkles size={20} />
-            <p>Ask anything about <strong>{video?.VideoTitle}</strong>. I know what is said and shown on screen.</p>
+            <BookOpen size={20} aria-hidden="true" />
+            <p>Ask a question about <strong>{video?.VideoTitle}</strong>. Answers reference the lesson transcript and on-screen code.</p>
           </div>
         )}
 
@@ -133,13 +133,13 @@ const TutorPanel = ({ open, onClose, courseId, video, getCurrentTime, onSeek }) 
           </div>
         ))}
 
-        {busy && <div className="tutor-msg tutor-msg-tutor tutor-typing" role="status">Thinking…</div>}
+        {busy && <div className="tutor-msg tutor-msg-tutor tutor-typing" role="status">Searching lesson context...</div>}
         {error && <div className="tutor-error" role="alert">{error}</div>}
       </div>
 
       {ready && (
         <div className="tutor-quick">
-          {QUICK_PROMPTS.map(p => (
+          {QUICK_PROMPTS.map((p) => (
             <button key={p} type="button" className="tutor-chip" disabled={busy} onClick={() => ask(p)}>
               {p}
             </button>
@@ -147,20 +147,20 @@ const TutorPanel = ({ open, onClose, courseId, video, getCurrentTime, onSeek }) 
         </div>
       )}
 
-      <form className="tutor-input" onSubmit={e => { e.preventDefault(); ask(input); }}>
-        <label htmlFor="tutor-question" className="sr-only">Ask the AI Tutor</label>
+      <form className="tutor-input" onSubmit={(e) => { e.preventDefault(); ask(input); }}>
+        <label htmlFor="tutor-question" className="sr-only">Ask a question about this lesson</label>
         <input
           id="tutor-question"
           ref={inputRef}
           value={input}
           maxLength={500}
-          onChange={e => setInput(e.target.value)}
-          placeholder={ready ? 'Ask about this lesson…' : 'Preparing…'}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder={ready ? 'Ask a question about this lesson...' : 'Preparing lesson context...'}
           disabled={!ready || busy}
           autoComplete="off"
         />
         <button type="submit" className="btn btn-primary" disabled={!ready || busy || !input.trim()} aria-label="Send question">
-          <Send size={16} />
+          <Send size={16} aria-hidden="true" />
         </button>
       </form>
     </aside>

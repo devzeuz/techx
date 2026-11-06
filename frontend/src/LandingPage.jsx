@@ -1,71 +1,84 @@
 import React, { useState, useEffect } from 'react';
 import { apiRequest } from './Api';
-import { useNavigate } from 'react-router-dom';
-import { Search, PlayCircle, Bookmark, BookOpen } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom';
+import { Search, BookOpen, AlertCircle, ArrowRight, Compass } from 'lucide-react';
 import SkeletonLoader from './components/SkeletonLoader';
-import Spinner from './components/Spinner';
+import CourseCard from './components/CourseCard';
 
-/* Gradient palette cycles through course cards */
-const GRADIENTS = [
-  'linear-gradient(135deg, #1e40af 0%, #3b82f6 100%)',
-  'linear-gradient(135deg, #1d4ed8 0%, #60a5fa 100%)',
-  'linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%)',
-  'linear-gradient(135deg, #1d4ed8 0%, #93c5fd 100%)',
-];
+const MAX_FEATURED_COURSES = 6;
 
 const LandingPage = ({ user }) => {
   const [allCourses, setAllCourses]             = useState([]);
   const [bookmarks, setBookmarks]               = useState(new Set());
+  const [enrolledMap, setEnrolledMap]           = useState({});
   const [search, setSearch]                     = useState('');
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(true);
   const [loadError, setLoadError]               = useState(false);
   const [enrollingId, setEnrollingId]           = useState(null);
   const navigate = useNavigate();
 
-  // Amplify v6 getCurrentUser() returns a UUID in .username;
-  // .signInDetails.loginId holds the actual email used to sign in.
   const userId = user?.signInDetails?.loginId ?? user?.username ?? '';
 
-  const loadCatalog = async () => {
+  const loadCatalogAndUser = async () => {
     setIsLoadingCatalog(true);
     setLoadError(false);
-    const catalog = await apiRequest('/courses');
+
+    const [catalog, userData] = await Promise.all([
+      apiRequest('/courses'),
+      userId ? apiRequest(`/user?userId=${encodeURIComponent(userId)}`) : Promise.resolve([]),
+    ]);
+
     if (catalog === null) {
-      // API error — network, auth, or server issue
       setLoadError(true);
-    } else {
-      setAllCourses(Array.isArray(catalog) ? catalog : []);
+      setIsLoadingCatalog(false);
+      return;
     }
+
+    const coursesList = Array.isArray(catalog) ? catalog : [];
+    setAllCourses(coursesList);
+
+    if (Array.isArray(userData)) {
+      const b = new Set(
+        userData
+          .filter((i) => i.SK?.startsWith('BOOKMARK#'))
+          .map((i) => i.SK.split('#')[1]),
+      );
+      setBookmarks(b);
+
+      const enrollments = userData.filter((i) => i.SK?.startsWith('COURSE#'));
+      const watchedItems = userData.filter((i) => i.SK?.startsWith('WATCHED#'));
+      const nextEnrolled = {};
+
+      enrollments.forEach((userCourse) => {
+        const cid = userCourse.SK.split('#')[1];
+        let total = userCourse.TotalVideos;
+        if (!total || total === 0) {
+          const pub = coursesList.find((c) => c.PK === `COURSE#${cid}`);
+          total = pub ? pub.TotalVideos : 0;
+        }
+        if (!total) total = 1;
+        const watchedCount = watchedItems.filter((w) => w.CourseId === cid).length;
+        nextEnrolled[cid] = Math.min(100, Math.round((watchedCount / total) * 100));
+      });
+      setEnrolledMap(nextEnrolled);
+    }
+
     setIsLoadingCatalog(false);
   };
 
-  const loadBookmarks = async () => {
-    if (!userId) return;
-    const userData = await apiRequest(`/user?userId=${userId}`);
-    if (!Array.isArray(userData)) return;
-    const b = new Set(
-      userData
-        .filter(i => i.SK?.startsWith('BOOKMARK#'))
-        .map(i => i.SK.split('#')[1]),
-    );
-    setBookmarks(b);
-  };
-
   useEffect(() => {
-    loadCatalog();
-    loadBookmarks();
+    loadCatalogAndUser();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
+  }, [userId]);
 
   const handleEnroll = async (course) => {
     const courseId = course.PK.split('#')[1];
     setEnrollingId(courseId);
     await apiRequest('/user', 'POST', {
       userId,
-      type:        'ENROLL',
+      type: 'ENROLL',
       courseId,
-      title:       course.Title,
+      title: course.Title,
       totalVideos: course.TotalVideos,
     });
     setEnrollingId(null);
@@ -76,15 +89,21 @@ const LandingPage = ({ user }) => {
     const courseId = course.PK.split('#')[1];
     if (bookmarks.has(courseId)) {
       await apiRequest('/user', 'POST', {
-        userId, type: 'REMOVE_BOOKMARK', courseId,
+        userId,
+        type: 'REMOVE_BOOKMARK',
+        courseId,
       });
       const next = new Set(bookmarks);
       next.delete(courseId);
       setBookmarks(next);
     } else {
       await apiRequest('/user', 'POST', {
-        userId, type: 'BOOKMARK', courseId,
-        title: course.Title, totalVideos: course.TotalVideos,
+        userId,
+        type: 'BOOKMARK',
+        courseId,
+        title: course.Title,
+        totalVideos: course.TotalVideos,
+        thumbnail: course.Thumbnail,
       });
       const next = new Set(bookmarks);
       next.add(courseId);
@@ -92,179 +111,193 @@ const LandingPage = ({ user }) => {
     }
   };
 
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    const q = search.trim();
+    navigate(q ? `/courses?q=${encodeURIComponent(q)}` : '/courses');
+  };
+
   const filtered = allCourses.filter(
-    c => c.Title && c.Title.toLowerCase().includes(search.toLowerCase()),
+    (c) => c.Title && c.Title.toLowerCase().includes(search.toLowerCase()),
   );
 
-  return (
-    <div className="page-wrapper">
+  // Main page "Explore Courses" is strictly capped at 6 courses
+  const featuredCourses = filtered.slice(0, MAX_FEATURED_COURSES);
+  const marketplaceHref = search.trim()
+    ? `/courses?q=${encodeURIComponent(search.trim())}`
+    : '/courses';
 
+  return (
+    <main className="page-wrapper">
       {/* ── HERO ────────────────────────────────────── */}
       <section className="landing-hero">
         <div className="container">
-          <div className="landing-hero-content fade-in-up">
-            <div
-              className="badge badge-blue"
-              style={{ marginBottom: '20px', display: 'inline-flex' }}
-            >
-              ✦ Curated Tech Education
-            </div>
+          <div className="landing-hero-content">
+            <p className="section-eyebrow">Technical Learning Platform</p>
 
             <h1 className="landing-title">
-              Master Your Future.
+              Structured engineering courses, built around real code.
             </h1>
 
             <p className="landing-subtitle">
-              Curated tech courses designed to take you from zero to hero.
-              Build skills that matter — at your own pace, on your own schedule.
+              Study curated video curricula covering cloud infrastructure, backend systems, and web development.
+              Track lesson completion, take timestamped study notes, and ask grounded questions as you watch.
             </p>
 
-            {/* Search */}
-            <div className="landing-search-wrap">
-              <Search size={17} className="landing-search-icon" />
-              <input
-                id="course-search"
-                type="text"
-                placeholder="Search Python, React, AWS..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="landing-search-input"
-                aria-label="Search courses"
-              />
-            </div>
+            {/* Search + Marketplace CTA */}
+            <form className="landing-search-form" onSubmit={handleSearchSubmit} role="search">
+              <div className="landing-search-wrap">
+                <label htmlFor="course-search" className="sr-only">
+                  Search courses
+                </label>
+                <Search size={17} className="landing-search-icon" aria-hidden="true" />
+                <input
+                  id="course-search"
+                  name="q"
+                  type="search"
+                  placeholder="Search Python, React, AWS, Linux..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="landing-search-input"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck="false"
+                />
+              </div>
+              <Link to={marketplaceHref} className="btn btn-primary landing-marketplace-btn">
+                <Compass size={16} aria-hidden="true" />
+                Course Marketplace
+              </Link>
+            </form>
           </div>
         </div>
       </section>
 
-      {/* ── COURSE GRID ─────────────────────────────── */}
-      <section style={{ padding: '56px 0 80px' }}>
+      {/* ── EXPLORE COURSES (LIMITED TO 6) ──────────── */}
+      <section style={{ padding: '48px 0 80px' }}>
         <div className="container">
+          <div className="section-header" style={{ flexWrap: 'wrap', gap: '12px' }}>
+            <div>
+              <h2 className="section-title">
+                <BookOpen size={18} color="var(--color-accent-light)" aria-hidden="true" />
+                {search ? `Results for "${search}"` : 'Explore Courses'}
+              </h2>
+              {!isLoadingCatalog && !loadError && filtered.length > 0 && (
+                <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.84rem', marginTop: '4px' }}>
+                  Showing {featuredCourses.length} of {filtered.length}{' '}
+                  {filtered.length === 1 ? 'available course' : 'available courses'}
+                </p>
+              )}
+            </div>
 
-          {/* Section header */}
-          <div className="section-header">
-            <h2 className="section-title">
-              <BookOpen size={18} color="var(--color-accent-light)" />
-              {search ? `Results for "${search}"` : 'Explore Courses'}
-            </h2>
-            {!isLoadingCatalog && (
-              <span className="badge badge-blue">
-                {filtered.length} {filtered.length === 1 ? 'course' : 'courses'}
-              </span>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Link to={marketplaceHref} className="btn btn-ghost" style={{ padding: '8px 14px', fontSize: '0.85rem' }}>
+                View All Courses
+                <ArrowRight size={15} aria-hidden="true" />
+              </Link>
+            </div>
           </div>
 
           {/* States */}
           {isLoadingCatalog ? (
-            <SkeletonLoader variant="card" count={6} />
-
+            <SkeletonLoader variant="card" count={MAX_FEATURED_COURSES} />
           ) : loadError ? (
-            /* ── API error state ── */
             <div className="card landing-empty-state">
-              <span style={{ fontSize: '2.5rem' }}>⚠️</span>
+              <AlertCircle size={36} color="var(--color-text-subtle)" aria-hidden="true" />
               <h3 style={{ color: 'var(--color-text-secondary)', fontWeight: '700' }}>
-                Couldn't load courses
+                Could not load courses
               </h3>
               <p style={{ color: 'var(--color-text-subtle)', fontSize: '0.88rem' }}>
                 There was a problem reaching the server. Check your connection and try again.
               </p>
               <button
+                type="button"
                 className="btn btn-primary"
-                onClick={loadCatalog}
+                onClick={loadCatalogAndUser}
                 style={{ marginTop: '4px' }}
               >
                 Retry
               </button>
             </div>
-
           ) : filtered.length === 0 && search ? (
-            /* ── Search returned nothing ── */
             <div className="card landing-empty-state">
-              <Search size={40} color="var(--color-text-subtle)" />
+              <Search size={36} color="var(--color-text-subtle)" aria-hidden="true" />
               <h3 style={{ color: 'var(--color-text-secondary)', fontWeight: '700' }}>
                 No results for &ldquo;{search}&rdquo;
               </h3>
               <p style={{ color: 'var(--color-text-subtle)', fontSize: '0.88rem' }}>
-                Try a different search term.
+                Try a different search term or browse the full Course Marketplace.
               </p>
-              <button
-                className="btn btn-ghost"
-                onClick={() => setSearch('')}
-                style={{ marginTop: '4px' }}
-              >
-                Clear search
-              </button>
+              <div style={{ display: 'flex', gap: '10px', marginTop: '4px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => setSearch('')}
+                >
+                  Clear search
+                </button>
+                <Link to="/courses" className="btn btn-primary">
+                  Open Marketplace
+                </Link>
+              </div>
             </div>
-
           ) : filtered.length === 0 ? (
-            /* ── Empty catalog ── */
             <div className="card landing-empty-state">
-              <BookOpen size={40} color="var(--color-text-subtle)" />
+              <BookOpen size={36} color="var(--color-text-subtle)" aria-hidden="true" />
               <h3 style={{ color: 'var(--color-text-secondary)', fontWeight: '700' }}>
-                No courses yet
+                No courses published yet
               </h3>
               <p style={{ color: 'var(--color-text-subtle)', fontSize: '0.88rem' }}>
-                Check back soon — new courses are on the way.
+                New courses will appear here once published to the catalog.
               </p>
             </div>
-
           ) : (
-            <div className="course-grid fade-in-up">
-              {filtered.map((course, idx) => {
-                const courseId   = course.PK.split('#')[1];
-                const bookmarked = bookmarks.has(courseId);
-                const enrolling  = enrollingId === courseId;
+            <>
+              <div className="course-grid">
+                {featuredCourses.map((course) => {
+                  const courseId = course.PK.split('#')[1];
+                  return (
+                    <CourseCard
+                      key={course.PK}
+                      course={course}
+                      bookmarked={bookmarks.has(courseId)}
+                      enrolling={enrollingId === courseId}
+                      isEnrolled={enrolledMap[courseId] !== undefined}
+                      progress={enrolledMap[courseId]}
+                      onEnroll={handleEnroll}
+                      onToggleBookmark={toggleBookmark}
+                    />
+                  );
+                })}
+              </div>
 
-                return (
-                  <div key={course.PK} className="card course-card">
-                    {/* Thumbnail */}
-                    <div
-                      className="course-card-thumb"
-                      style={{ background: GRADIENTS[idx % GRADIENTS.length] }}
-                    >
-                      <PlayCircle size={38} color="rgba(255,255,255,0.65)" />
-                    </div>
-
-                    <div className="course-card-body">
-                      <h3 className="course-card-title">{course.Title}</h3>
-
-                      <div className="course-card-meta">
-                        <PlayCircle size={13} />
-                        <span>{course.TotalVideos} videos</span>
-                      </div>
-
-                      <div className="course-card-actions">
-                        <button
-                          onClick={() => handleEnroll(course)}
-                          className="btn btn-outline"
-                          style={{ flex: 1 }}
-                          disabled={enrolling}
-                          aria-label={`Enroll in ${course.Title}`}
-                        >
-                          {enrolling
-                            ? <><Spinner size="sm" /> Enrolling…</>
-                            : 'Enroll Now'}
-                        </button>
-
-                        <button
-                          onClick={() => toggleBookmark(course)}
-                          className={`bookmark-btn ${bookmarked ? 'is-bookmarked' : ''}`}
-                          aria-label={bookmarked ? 'Remove bookmark' : 'Bookmark course'}
-                          title={bookmarked ? 'Remove bookmark' : 'Save for later'}
-                        >
-                          <Bookmark size={17} fill={bookmarked ? 'currentColor' : 'none'} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+              {/* Marketplace callout banner */}
+              <div className="marketplace-cta-banner">
+                <div className="marketplace-cta-text">
+                  <h3 className="marketplace-cta-title">
+                    Browse the Full Course Marketplace
+                  </h3>
+                  <p className="marketplace-cta-desc">
+                    {filtered.length > MAX_FEATURED_COURSES
+                      ? `${filtered.length - MAX_FEATURED_COURSES} additional ${
+                          filtered.length - MAX_FEATURED_COURSES === 1 ? 'course is' : 'courses are'
+                        } available in the catalog. Filter by domain, experience level, or lesson count.`
+                      : `Explore all ${allCourses.length} ${
+                          allCourses.length === 1 ? 'course' : 'courses'
+                        } with topic filtering, sorting, and enrollment status views.`}
+                  </p>
+                </div>
+                <Link to={marketplaceHref} className="btn btn-primary" style={{ padding: '12px 22px' }}>
+                  View Course Marketplace
+                  <ArrowRight size={16} aria-hidden="true" />
+                </Link>
+              </div>
+            </>
           )}
-
         </div>
       </section>
-
-    </div>
+    </main>
   );
 };
 

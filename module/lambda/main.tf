@@ -59,6 +59,7 @@ resource "aws_lambda_function" "audio_downloader" {
       TABLE_NAME   = var.table_name
       MEDIA_BUCKET = var.media_bucket
       FFMPEG_PATH  = "/opt/bin/ffmpeg"
+      PYTHONPATH   = "/opt/python"
     }
   }
 }
@@ -166,6 +167,8 @@ resource "aws_lambda_function" "frame_extractor" {
     variables = {
       TABLE_NAME   = var.table_name
       MEDIA_BUCKET = var.media_bucket
+      FFMPEG_PATH  = "/opt/bin/ffmpeg"
+      PYTHONPATH   = "/opt/python"
     }
   }
 }

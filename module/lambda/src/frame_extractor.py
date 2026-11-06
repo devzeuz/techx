@@ -25,6 +25,41 @@ s3       = boto3.client('s3')
 dynamodb = boto3.resource('dynamodb')
 table    = dynamodb.Table(os.environ['TABLE_NAME'])
 BUCKET   = os.environ['MEDIA_BUCKET']
+FFMPEG   = os.environ.get('FFMPEG_PATH', '/opt/bin/ffmpeg')
+LAYER_PY = os.environ.get('PYTHONPATH', '/opt/python')
+VIDEO_FORMAT = 'bestvideo[height<=720][ext=mp4]/best[height<=720][ext=mp4]/best[height<=720]/best'
+
+
+def download_video(video_url: str, video_path: str) -> None:
+    """Download video in-process via yt_dlp; subprocess fallback with PYTHONPATH."""
+    try:
+        import yt_dlp
+        opts = {
+            'format': VIDEO_FORMAT,
+            'extractor_args': {'youtube': {'player_client': ['android']}},
+            'outtmpl': video_path,
+            'noplaylist': True,
+            'quiet': True,
+            'no_warnings': True,
+            'cachedir': False,
+            'ffmpeg_location': FFMPEG,
+        }
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            ydl.download([video_url])
+        if os.path.exists(video_path):
+            return
+    except ImportError as e:
+        print(f"[yt-dlp] import failed ({e}); trying subprocess")
+
+    env = {**os.environ, 'PYTHONPATH': LAYER_PY}
+    dl = subprocess.run(
+        [sys.executable, '-m', 'yt_dlp', '-f', VIDEO_FORMAT, '--no-playlist',
+         '--extractor-args', 'youtube:player_client=android',
+         '--no-warnings', '--no-cache-dir', '-o', video_path, video_url],
+        capture_output=True, text=True, timeout=840, env=env,
+    )
+    if dl.returncode != 0 or not os.path.exists(video_path):
+        raise RuntimeError(f"Video download failed: {dl.stderr[-300:]}")
 
 # Capture frame this many seconds BEFORE the pause starts
 # (grab the screen state the instructor was showing just before going silent)
@@ -59,23 +94,10 @@ def lambda_handler(event, context):
         with tempfile.TemporaryDirectory() as tmpdir:
             # Download video only (no audio needed), capped at 720p — enough
             # to read code/slides, and keeps /tmp and download time bounded.
-            # `python -m yt_dlp`: the layer's console script is not on PATH.
+            if not os.access(FFMPEG, os.X_OK):
+                raise RuntimeError(f"ffmpeg not found/executable at {FFMPEG}")
             video_path = os.path.join(tmpdir, 'video.mp4')
-            dl_result  = subprocess.run(
-                [
-                    sys.executable, '-m', 'yt_dlp',
-                    '-f', 'bestvideo[height<=720][ext=mp4]/best[height<=720][ext=mp4]/best[height<=720]/best',
-                    '--no-playlist',
-                    '--no-warnings',
-                    '--no-cache-dir',
-                    '-o', video_path,
-                    video_url,
-                ],
-                capture_output=True, text=True, timeout=840
-            )
-            if dl_result.returncode != 0:
-                print(f"[yt-dlp stderr] {dl_result.stderr}")
-                raise RuntimeError(f"Video download failed: {dl_result.stderr[:300]}")
+            download_video(video_url, video_path)
 
             print(f"Video downloaded: {video_path}")
 
@@ -88,7 +110,7 @@ def lambda_handler(event, context):
 
                 ffmpeg_result = subprocess.run(
                     [
-                        'ffmpeg',
+                        FFMPEG,
                         '-ss', str(capture_ts),     # seek to timestamp (fast when before -i)
                         '-i', video_path,
                         '-vframes', '1',             # extract exactly 1 frame

@@ -58,12 +58,13 @@ import CustomAuth  from './components/CustomAuth';
 import Spinner     from './components/Spinner';
 
 // Pages
-import LandingPage  from './LandingPage';
-import Dashboard    from './Dashboard';
-import Bookmarks    from './Bookmarks';
-import CoursePlayer from './CoursePlayer';
-import Admin        from './Admin';
-import About        from './About';
+import LandingPage        from './LandingPage';
+import CoursesMarketplace from './CoursesMarketplace';
+import Dashboard          from './Dashboard';
+import Bookmarks          from './Bookmarks';
+import CoursePlayer       from './CoursePlayer';
+import Admin              from './Admin';
+import About              from './About';
 
 /* ── Access-denied page for non-admin /admin attempts ── */
 const AccessDenied = () => (
@@ -122,11 +123,12 @@ const AuthenticatedApp = ({ user, signOut }) => {
     <Router>
       <Navbar user={user} signOut={signOut} />
       <Routes>
-        <Route path="/"                element={<LandingPage  user={user} />} />
-        <Route path="/dashboard"       element={<Dashboard    user={user} />} />
-        <Route path="/bookmarks"       element={<Bookmarks    user={user} />} />
+        <Route path="/"                element={<LandingPage        user={user} />} />
+        <Route path="/courses"         element={<CoursesMarketplace user={user} />} />
+        <Route path="/dashboard"       element={<Dashboard          user={user} />} />
+        <Route path="/bookmarks"       element={<Bookmarks          user={user} />} />
         <Route path="/about"           element={<About />} />
-        <Route path="/learn/:courseId" element={<CoursePlayer user={user} />} />
+        <Route path="/learn/:courseId" element={<CoursePlayer       user={user} />} />
         <Route path="/admin"           element={adminElement} />
       </Routes>
       <Footer />

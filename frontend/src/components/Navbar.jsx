@@ -5,6 +5,7 @@ import { useTheme } from '../useTheme';
 
 const NAV_LINKS = [
   { to: '/',          label: 'Explore'     },
+  { to: '/courses',   label: 'Marketplace' },
   { to: '/dashboard', label: 'Dashboard'   },
   { to: '/about',     label: 'About'       },
 ];

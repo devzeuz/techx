@@ -86,6 +86,7 @@ module "api" {
     "GET /admin/curations/{id}"          = "curator"
     "DELETE /admin/curations/{id}"       = "curator"
     "POST /admin/curations/{id}/publish" = "curator"
+    "POST /admin/curations/{id}/retry"   = "curator"
   }
 }
 

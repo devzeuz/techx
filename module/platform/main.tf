@@ -231,18 +231,19 @@ resource "aws_lambda_function" "curator" {
   runtime          = "python3.11"
   filename         = data.archive_file.platform_src.output_path
   source_code_hash = data.archive_file.platform_src.output_base64sha256
-  timeout          = 180 # 3 min for autonomous multi-turn search & reasoning
+  timeout          = 300 # 5 min for autonomous multi-turn search & reasoning
   memory_size      = 512
 
   tags = { Purpose = "AI-Curator-Autonomous-Agent" }
 
   environment {
     variables = {
-      TABLE_NAME          = var.table_name
-      YOUTUBE_SSM_PATH    = var.youtube_ssm_name
-      GEMINI_SSM_PATH     = var.gemini_ssm_name
-      GEMINI_MODEL        = "gemini-3.8-flash"
-      CURATOR_LAMBDA_NAME = "techx-curator"
+      TABLE_NAME             = var.table_name
+      YOUTUBE_SSM_PATH       = var.youtube_ssm_name
+      GEMINI_SSM_PATH        = var.gemini_ssm_name
+      GEMINI_MODEL           = "gemini-3.8-flash"
+      GEMINI_FALLBACK_MODELS = "gemini-3-flash-preview"
+      CURATOR_LAMBDA_NAME    = "techx-curator"
     }
   }
 }
@@ -300,8 +301,8 @@ resource "aws_lambda_function" "tutor" {
 
   environment {
     variables = {
-      TABLE_NAME        = var.table_name
-      GEMINI_SSM_PATH   = var.gemini_ssm_name
+      TABLE_NAME             = var.table_name
+      GEMINI_SSM_PATH        = var.gemini_ssm_name
       GEMINI_MODEL           = "gemini-3.8-flash"
       GEMINI_FALLBACK_MODELS = "gemini-3-flash-preview"
       TUTOR_LAMBDA_NAME      = "techx-tutor"
