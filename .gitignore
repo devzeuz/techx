@@ -22,3 +22,11 @@ __pycache__/
 
 # OS
 .DS_Store
+
+# Local notes and agent handoff docs
+*.local
+NEXT_AGENT_HANDOFF.md
+FIX_PLAN_CURATOR_AND_AUDIO_DESCRIPTIONS.md
+brainstorm.MD
+data_points.md
+xprize_compliance.md
